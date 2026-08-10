@@ -1,6 +1,6 @@
-# Laga Tour 🏖️
+# Laga
 
-Laga Tour is a social platform for travelers to share complete tour plans, discover destinations on an interactive map, and connect with other travelers to plan trips together.
+Laga is a social platform for travelers to share complete tour plans, discover destinations on an interactive map, and connect with other travelers to plan trips together.
 
 ## Features
 
@@ -140,4 +140,8 @@ A tour package builder that creates packages from given resources.
 
 ## License
 
+<<<<<<< HEAD
 > Coming Soon
+=======
+> Add license information here.
+>>>>>>> 11546ce7a524be7e9d461fadcaac8e7480e68bb4
