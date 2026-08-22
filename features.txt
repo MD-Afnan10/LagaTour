@@ -1,0 +1,130 @@
+================================================================================
+                             LAGA TOUR - FEATURE DOCUMENTATION
+================================================================================
+
+This document contains a comprehensive list of all features in Laga Tour and how they work.
+Note: This document is automatically updated whenever a new feature is added or updated.
+
+--------------------------------------------------------------------------------
+1. MULTI-PLACE, MULTI-TRANSPORT & ITEMIZED TRIP ITINERARIES (/plans)
+--------------------------------------------------------------------------------
+- Description: Allows travelers to build, share, and explore multi-city or multi-stop 
+  travel circuits with itemized transport, accommodation, and activity costs.
+- How It Works:
+  * Multi-Leg Circuit Route: Each trip plan consists of an ordered list of legs (stops),
+    specifying:
+    - Origin & Destination place (e.g., Dhaka ➔ Chittagong ➔ Cox's Bazar ➔ Dhaka)
+    - Transport mode (Bus, Aeroplane, Train, Jeep, Launch) & transport cost (BDT)
+    - Accommodation / Hotel stay name & stay cost (BDT)
+    - Other place-specific expenses (food, guide, activities)
+  * Dynamic Circuit Builder: In the "Share Plan" modal, users can dynamically add,
+    edit, or remove stops to build complex multi-destination itineraries.
+  * Auto-Budget Calculation: Total budget is automatically summed across all legs and expenses.
+  * Route Flow Visualization: Plan cards display visual step-by-step timelines showing 
+    transport badges, stay locations, and place costs.
+
+--------------------------------------------------------------------------------
+2. PLACES DIRECTORY, RATING MODAL & SAFETY REPORTING (/places & /map)
+--------------------------------------------------------------------------------
+- Description: A directory of tourist locations featuring community ratings, safety 
+  flags, recommendations, user reviews, and map alerts.
+- How It Works:
+  * Places Directory (/places): Displays tourist spots filtered by category (Beach, Hills, 
+    Nature, Island, Forest, Historic), search queries, and safety status (Safe / Unsafe).
+  * "Worth Exploring" Captions: Highlights curated local recommendations and secret 
+    viewpoints for each place.
+  * "+ Add New Place": Modal allowing users to contribute new tourist destinations with 
+    descriptions, categories, image URLs, and exploration captions.
+  * Rate & Review Modal: Clicking "Rate & Review Place" opens a popup modal with:
+    - 1 to 5 Star interactive rating selector.
+    - "Mark Place as Unsafe" toggle switch (increments public unsafe report count).
+    - Review comment submission.
+  * Safety Reporting & Map Alert Markers (/map): Locations with safety reports 
+    automatically display red `⚠️ UNSAFE (X Reports)` warning banners inside Leaflet map 
+    popups and sidebar list items.
+
+--------------------------------------------------------------------------------
+3. PUBLIC USER PROFILES (/profile/:userId)
+--------------------------------------------------------------------------------
+- Description: Dedicated public profile pages for community travelers.
+- How It Works:
+  * Profile Header: Displays cover image, avatar, full name, username handle, league tier 
+    badge, traveler score points, bio, follower count, following count, and travel stats.
+  * Interactive Follow/Unfollow: Users can follow/unfollow travelers with real-time 
+    follower count updates and score point rewards.
+  * Direct Messaging Shortcut: One-click "Message" button navigating to the private chat inbox.
+  * Authored Content Tabs: Displays tabbed sections of all Tour Plans and Travel Stories 
+    authored by that user.
+  * Global User Linking: Clicking any user avatar or @username across Social Feed, Tour 
+    Plans, Group Planner, Messaging, or Places routes to their profile page.
+
+--------------------------------------------------------------------------------
+4. COMMUNITY LEADERBOARDS & RANKINGS (/rankings)
+--------------------------------------------------------------------------------
+- Description: Page showcasing top travelers and highest-rated travel plans.
+- How It Works:
+  * Top Travelers Leaderboard Tab:
+    - Podium Showcase: Top 3 travelers highlighted on Gold 🥇 (#1 Champion), Silver 🥈 (#2), 
+      and Bronze 🥉 (#3) podium cards with animated badges, score points, and profile links.
+    - Leaderboard Table: Ranks all travelers by score points, displaying league tier 
+      (Legend, Expert, Adventurer, Traveler, Explorer), trips shared, and cities visited. 
+      Includes search and league category filters.
+  * Top Tour Plans Tab:
+    - Ranks trip itineraries by Highest Rated (1-5 stars), Most Liked, or Best Budget Value.
+    - Displays multi-leg route previews, budget totals, author profiles, and quick links 
+      to view full itineraries.
+
+--------------------------------------------------------------------------------
+5. GAMIFICATION & TRAVELER SCORE SYSTEM
+--------------------------------------------------------------------------------
+- Description: Reward system celebrating active engagement and contributions.
+- How It Works:
+  * Score Points: Awarded for publishing plans, rating places, sharing stories, logging 
+    expenses, and following travelers.
+  * League Tiers: Explorer -> Traveler -> Adventurer -> Expert -> Legend.
+  * Visual Rewards: Confetti animations and level-up modal alerts on achieving milestones.
+
+--------------------------------------------------------------------------------
+6. SOCIAL TRAVEL FEED (/)
+--------------------------------------------------------------------------------
+- Description: Feed for discovering photo updates, travel stories, and community posts.
+- How It Works:
+  * Story Sharing: Post travel updates with geotags and images.
+  * AI Media Verification: Simulates AI geometry and geotag checks before publishing.
+  * Engagement: Upvote/downvote posts, save stories, and post inline comments.
+
+--------------------------------------------------------------------------------
+7. GROUP EXPEDITION PLANNER (/groups)
+--------------------------------------------------------------------------------
+- Description: Collaborative workspace for team travel planning.
+- How It Works:
+  * Interactive Task Checklist: Assign tasks to team members and track completion.
+  * Split-Expense Logger: Log shared bills; automatically calculates individual balances 
+    per head.
+  * Group Chat Room: Instant messaging for group members.
+  * Group Itinerary: Timeline of shared activities.
+
+--------------------------------------------------------------------------------
+8. AI TOUR BUILDER (/ai-builder)
+--------------------------------------------------------------------------------
+- Description: AI-powered itinerary generator.
+- How It Works:
+  * Automated Itinerary Generation: Input travel duration, budget, and destination preferences 
+    to generate custom day-by-day itineraries.
+
+--------------------------------------------------------------------------------
+9. MESSAGING & INBOX (/chats)
+--------------------------------------------------------------------------------
+- Description: Private message streams between community travelers.
+- How It Works:
+  * Direct Chat Rooms: Search travelers and send direct messages.
+  * Profile Integration: Clickable user avatars and names in chat headers and message bubbles 
+    linking directly to user profile pages.
+
+--------------------------------------------------------------------------------
+10. DYNAMIC THEME SYSTEM & ACCESSIBILITY
+--------------------------------------------------------------------------------
+- Description: Responsive theme system supporting Light and Dark (Sunset) modes.
+- How It Works:
+  * High-Contrast Color Palette: Tailored light mode color palette with high-contrast text 
+    (text-primary-content) ensuring full legibility across buttons, badges, and navigation.
