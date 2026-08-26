@@ -160,7 +160,7 @@ export default function CreatePost() {
       league: "Explorer"
     };
 
-    createPost({
+    await createPost({
       author: authorUser,
       caption: caption.trim(),
       images: photoItems.map(p => p.url),

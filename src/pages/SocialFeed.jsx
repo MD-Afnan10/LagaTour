@@ -6,6 +6,7 @@ import {
   Heart,
   MessageCircle, 
   Bookmark, 
+  Share2,
   PlusCircle,
   MapPin, 
   CheckCircle, 
@@ -18,13 +19,25 @@ import {
   ChevronRight,
   Image as ImageIcon,
   Video as VideoIcon,
-  Layers
+  Layers,
+  Copy,
+  Check,
+  Globe,
+  Loader2
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function SocialFeed() {
   const { currentUser, addPoints } = useAuth();
-  const { posts, toggleLikePost, toggleSavePost, addComment, reportPost } = usePosts();
+  const { 
+    posts, 
+    isLoading,
+    toggleLikePost, 
+    toggleSavePost, 
+    sharePost, 
+    addComment, 
+    reportPost 
+  } = usePosts();
   const navigate = useNavigate();
   
   // Comment inputs per post ID
@@ -41,13 +54,62 @@ export default function SocialFeed() {
   const [reportReason, setReportReason] = useState("");
   const [reportSuccessMsg, setReportSuccessMsg] = useState("");
 
+  // Share Modal state
+  const [sharingPost, setSharingPost] = useState(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [shareToastMsg, setShareToastMsg] = useState("");
+
   const handleLike = (postId) => {
-    toggleLikePost(postId);
-    addPoints(5);
+    toggleLikePost(postId, currentUser);
+    if (addPoints) addPoints(5);
   };
 
   const handleSave = (postId) => {
-    toggleSavePost(postId);
+    toggleSavePost(postId, currentUser);
+  };
+
+  const handleShareClick = async (post) => {
+    setSharingPost(post);
+    setCopiedLink(false);
+    
+    // Increment share counter in MySQL
+    await sharePost(post.id);
+    if (addPoints) addPoints(10);
+  };
+
+  const copyShareLink = (postId) => {
+    const shareUrl = `${window.location.origin}/#post-${postId}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopiedLink(true);
+      setShareToastMsg("🔗 Link copied to clipboard!");
+      setTimeout(() => {
+        setCopiedLink(false);
+        setShareToastMsg("");
+      }, 2500);
+    }).catch(() => {
+      setShareToastMsg("🔗 Link ready to share!");
+    });
+  };
+
+  const handleNativeShare = async (post) => {
+    const shareUrl = `${window.location.origin}/#post-${post.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `LagaTour - Post by ${post.author?.name || 'Traveler'}`,
+          text: post.caption || "Check out this travel story on LagaTour!",
+          url: shareUrl,
+        });
+        setShareToastMsg("🎉 Shared successfully!");
+        setTimeout(() => setShareToastMsg(""), 2000);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          copyShareLink(post.id);
+        }
+      }
+    } else {
+      copyShareLink(post.id);
+    }
   };
 
   const handleCommentSubmit = (postId, e) => {
@@ -55,17 +117,19 @@ export default function SocialFeed() {
     const commentText = commentInputs[postId] || "";
     if (!commentText.trim()) return;
 
-    addComment(postId, currentUser || "traveler", commentText);
+    addComment(postId, currentUser || { username: "traveler", name: "Traveler" }, commentText);
     setCommentInputs(prev => ({ ...prev, [postId]: "" }));
     
     // Add points for active engagement
-    const result = addPoints(10);
-    if (result && result.leveledUp) {
-      confetti({
-        particleCount: 120,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
+    if (addPoints) {
+      const result = addPoints(10);
+      if (result && result.leveledUp) {
+        confetti({
+          particleCount: 120,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      }
     }
   };
 
@@ -80,8 +144,8 @@ export default function SocialFeed() {
     e.preventDefault();
     if (!reportingPost) return;
 
-    reportPost(reportingPost.id, reporterName, reportReason);
-    setReportSuccessMsg("✅ Thank you. Your report has been submitted to admin moderation.");
+    reportPost(reportingPost.id, currentUser, reporterName, reportReason);
+    setReportSuccessMsg("✅ Thank you. Your report has been recorded in database moderation queue.");
     
     setTimeout(() => {
       setReportingPost(null);
@@ -111,10 +175,23 @@ export default function SocialFeed() {
   return (
     <div className="container mx-auto px-4 md:px-8 py-6 max-w-4xl relative">
       
+      {/* Toast Banner */}
+      {shareToastMsg && (
+        <div className="toast toast-top toast-center z-50">
+          <div className="alert alert-success text-white text-xs font-bold shadow-xl rounded-2xl py-2 px-4 flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            <span>{shareToastMsg}</span>
+          </div>
+        </div>
+      )}
+
       {/* Feed Header & Navigation to Dedicated Create Post Page */}
       <div className="flex justify-between items-center mb-8 bg-base-100 border border-base-200 p-6 rounded-3xl shadow-sm">
         <div>
-          <h1 className="text-3xl font-black tracking-tight mb-1 text-base-content">Traveler Feed</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-black tracking-tight mb-1 text-base-content">Traveler Feed</h1>
+            <span className="badge badge-sm badge-success font-bold text-[10px] text-white">MySQL Connected</span>
+          </div>
           <p className="text-xs sm:text-sm text-base-content/60">Discover shared itineraries, multiple photos, and video experiences from travelers.</p>
         </div>
         
@@ -127,9 +204,17 @@ export default function SocialFeed() {
         </button>
       </div>
 
+      {/* Loading state indicator */}
+      {isLoading && (
+        <div className="flex justify-center items-center py-6 text-primary gap-2">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="text-xs font-bold text-base-content/70">Syncing with Node.js backend...</span>
+        </div>
+      )}
+
       {/* Feed Posts */}
       <div className="space-y-6">
-        {visiblePosts.length === 0 ? (
+        {visiblePosts.length === 0 && !isLoading ? (
           <div className="text-center py-16 bg-base-100 rounded-3xl border border-dashed border-base-300 p-8 space-y-3">
             <MapPin className="w-12 h-12 text-primary mx-auto opacity-50" />
             <h3 className="font-bold text-lg">No travel stories available</h3>
@@ -159,7 +244,11 @@ export default function SocialFeed() {
             const currentVidIdx = activeVideoIndices[post.id] || 0;
 
             return (
-              <div key={post.id} className={`card bg-base-100 border border-base-200 overflow-hidden shadow-sm rounded-3xl transition-all ${post.isHidden ? "opacity-60 border-warning" : ""}`}>
+              <div 
+                key={post.id} 
+                id={`post-${post.id}`}
+                className={`card bg-base-100 border border-base-200 overflow-hidden shadow-sm rounded-3xl transition-all ${post.isHidden ? "opacity-60 border-warning" : ""}`}
+              >
                 
                 {/* Hidden Notice for Admin */}
                 {post.isHidden && (
@@ -179,6 +268,10 @@ export default function SocialFeed() {
                         src={post.author?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${post.author?.username}`} 
                         alt={post.author?.name} 
                         className="w-10 h-10 rounded-full object-cover border border-base-300 hover:opacity-80 transition-opacity" 
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = `https://api.dicebear.com/7.x/adventurer/svg?seed=${post.author?.username || 'traveler'}`;
+                        }}
                       />
                     </Link>
                     <div>
@@ -233,6 +326,10 @@ export default function SocialFeed() {
                           src={allImages[currentImgIdx]} 
                           alt={`Travel Post Photo ${currentImgIdx + 1}`} 
                           className="w-full object-cover max-h-[450px]" 
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800";
+                          }}
                         />
 
                         {/* Top Info Badges */}
@@ -335,9 +432,9 @@ export default function SocialFeed() {
                 {/* Post Content & Engagement Actions */}
                 <div className="p-5 space-y-4">
                   
-                  {/* Engagement Bar: Like (Heart), Comment, Save, Report */}
-                  <div className="flex justify-between items-center border-b border-base-200 pb-3">
-                    <div className="flex items-center gap-3">
+                  {/* Engagement Bar: Like (Heart), Comment, Share, Save, Report */}
+                  <div className="flex justify-between items-center border-b border-base-200 pb-3 flex-wrap gap-2">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                       
                       {/* LIKE BUTTON */}
                       <button 
@@ -350,20 +447,34 @@ export default function SocialFeed() {
                         title="Like Post"
                       >
                         <Heart className={`w-4 h-4 ${post.hasLiked ? "fill-rose-600 text-rose-600" : ""}`} />
-                        <span>{post.likes}</span>
+                        <span>{post.likes || 0}</span>
                       </button>
 
-                      {/* COMMENT COUNTER / EXPAND */}
+                      {/* COMMENT COUNTER */}
                       <div className="flex items-center gap-1.5 text-xs font-bold text-base-content/80 bg-base-200/70 border border-base-300 rounded-full px-3 py-1.5">
                         <MessageCircle className="w-4 h-4 text-base-content/70" />
                         <span>{post.comments?.length || 0} Comments</span>
                       </div>
 
+                      {/* SHARE BUTTON */}
+                      <button 
+                        onClick={() => handleShareClick(post)}
+                        className="flex items-center gap-1.5 text-xs font-bold text-base-content/80 bg-base-200/70 hover:bg-primary/10 hover:text-primary border border-base-300 rounded-full px-3 py-1.5 transition-all"
+                        title="Share Post"
+                      >
+                        <Share2 className="w-4 h-4 text-primary" />
+                        <span>{post.shares || 0} Shares</span>
+                      </button>
+
                     </div>
 
                     <div className="flex items-center gap-2">
                       {/* BOOKMARK BUTTON */}
-                      <button onClick={() => handleSave(post.id)} className="btn btn-ghost btn-xs btn-circle hover:text-primary">
+                      <button 
+                        onClick={() => handleSave(post.id)} 
+                        className={`btn btn-ghost btn-xs btn-circle transition-all ${post.hasSaved ? "text-primary bg-primary/10" : "hover:text-primary"}`}
+                        title={post.hasSaved ? "Saved" : "Save/Bookmark Post"}
+                      >
                         <Bookmark className={`w-4.5 h-4.5 ${post.hasSaved ? "fill-primary text-primary" : "text-base-content/60"}`} />
                       </button>
 
@@ -422,6 +533,87 @@ export default function SocialFeed() {
           })
         )}
       </div>
+
+      {/* SHARE MODAL */}
+      {sharingPost && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-base-100 border border-base-300 w-full max-w-md rounded-3xl p-6 shadow-2xl relative space-y-4">
+            
+            <button 
+              onClick={() => setSharingPost(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-full text-base-content/50 hover:bg-base-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-base-200 pb-3">
+              <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <Share2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-base-content">Share Travel Post</h3>
+                <p className="text-[11px] text-base-content/60">Share this post by @{sharingPost.author?.username || "traveler"} with your friends.</p>
+              </div>
+            </div>
+
+            {/* Post Summary Preview */}
+            <div className="bg-base-200/60 p-3.5 rounded-2xl border border-base-300 flex items-center gap-3">
+              {sharingPost.image ? (
+                <img src={sharingPost.image} alt="Preview" className="w-12 h-12 rounded-xl object-cover" />
+              ) : (
+                <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold">
+                  LT
+                </div>
+              )}
+              <div className="overflow-hidden">
+                <h4 className="font-bold text-xs truncate">@{sharingPost.author?.username || "traveler"}</h4>
+                <p className="text-[11px] text-base-content/70 line-clamp-1">{sharingPost.caption || "Travel Story"}</p>
+                <span className="text-[10px] text-primary font-semibold">{sharingPost.shares || 0} total shares</span>
+              </div>
+            </div>
+
+            {/* Share Link Copy Field */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-base-content/80">Direct Link</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={`${window.location.origin}/#post-${sharingPost.id}`} 
+                  className="input input-sm input-bordered flex-1 text-xs rounded-xl font-mono bg-base-200/50"
+                />
+                <button 
+                  onClick={() => copyShareLink(sharingPost.id)} 
+                  className={`btn btn-sm rounded-xl gap-1 text-xs font-bold ${copiedLink ? "btn-success text-white" : "btn-primary text-white"}`}
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedLink ? "Copied" : "Copy"}
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Share Actions */}
+            <div className="flex gap-2 pt-2">
+              <button 
+                onClick={() => handleNativeShare(sharingPost)} 
+                className="btn btn-sm btn-outline flex-1 rounded-xl text-xs font-bold gap-1.5"
+              >
+                <Globe className="w-4 h-4" /> Share via Apps
+              </button>
+              <button 
+                onClick={() => {
+                  copyShareLink(sharingPost.id);
+                  setSharingPost(null);
+                }} 
+                className="btn btn-sm btn-primary flex-1 rounded-xl text-xs font-bold text-white gap-1.5"
+              >
+                Done
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* REPORT POST MODAL */}
       {reportingPost && (
@@ -484,7 +676,7 @@ export default function SocialFeed() {
 
                 <div className="p-3 bg-base-200/50 rounded-xl text-[10px] text-base-content/60 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
-                  <span>Submitted reports are reviewed directly by the platform administration team in the Admin Panel.</span>
+                  <span>Submitted reports are saved in the MySQL database and reviewed directly by the platform administration team.</span>
                 </div>
 
                 <div className="flex gap-2 pt-2">
