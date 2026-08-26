@@ -25,6 +25,21 @@ import {
 export default function Rankings() {
   const { currentUser } = useAuth();
   
+  const isAdmin = currentUser?.isAdmin || currentUser?.email?.toLowerCase().startsWith("admin");
+
+  const [bannedUsers, setBannedUsers] = useState(() => {
+    const saved = localStorage.getItem("ts_banned_users");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const toggleBanUser = (userId) => {
+    setBannedUsers(prev => {
+      const updated = prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId];
+      localStorage.setItem("ts_banned_users", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   // Tab state: 'travelers' or 'plans'
   const [activeTab, setActiveTab] = useState("travelers");
 
@@ -334,8 +349,8 @@ export default function Rankings() {
                               <img src={user.avatar} className="w-9 h-9 rounded-full object-cover border border-base-300 hover:opacity-85 transition-opacity" alt={user.name} />
                             </Link>
                             <div>
-                              <Link to={`/profile/${user.id || user.username}`} className="font-bold text-xs hover:underline block leading-tight">
-                                {user.name}
+                              <Link to={`/profile/${user.id || user.username}`} className={`font-bold text-xs hover:underline block leading-tight ${bannedUsers.includes(user.id) ? 'line-through text-error' : ''}`}>
+                                {user.name} {bannedUsers.includes(user.id) && <span className="badge badge-error badge-xs ml-1 text-[8px]">BANNED</span>}
                               </Link>
                               <span className="text-[10px] text-base-content/50">@{user.username}</span>
                             </div>
@@ -361,12 +376,21 @@ export default function Rankings() {
                         </td>
 
                         <td className="text-right">
-                          <Link 
-                            to={`/profile/${user.id || user.username}`}
-                            className="btn btn-xs btn-outline btn-primary rounded-lg font-bold"
-                          >
-                            View Profile
-                          </Link>
+                          {isAdmin ? (
+                            <button 
+                              onClick={() => toggleBanUser(user.id)}
+                              className={`btn btn-xs rounded-lg font-bold border-none shadow-md ${bannedUsers.includes(user.id) ? 'btn-warning text-slate-900' : 'btn-error text-white'}`}
+                            >
+                              {bannedUsers.includes(user.id) ? 'Unban' : 'Ban User'}
+                            </button>
+                          ) : (
+                            <Link 
+                              to={`/profile/${user.id || user.username}`}
+                              className="btn btn-xs btn-outline btn-primary rounded-lg font-bold"
+                            >
+                              View Profile
+                            </Link>
+                          )}
                         </td>
                       </tr>
                     );

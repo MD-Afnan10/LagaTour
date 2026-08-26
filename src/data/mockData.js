@@ -398,6 +398,56 @@ export const MOCK_GROUP_TOURS = [
       { id: "gm_2", sender: MOCK_USERS[0], text: "Awesome! I will handle the food arrangements and the BBQ coordination.", time: "Aug 5, 2:45 PM" },
       { id: "gm_3", sender: MOCK_USERS[2], text: "Should we rent cycles there or book a tour auto?", time: "Aug 5, 3:01 PM" }
     ]
+  },
+  {
+    id: "group_2",
+    title: "Sajek Cloud Peak Camping 🏕️",
+    destination: "Sajek Valley",
+    travelDate: "2026-12-05",
+    estimatedBudget: 7500,
+    maxMembers: 8,
+    transportation: "Chander Gari 4WD Jeep",
+    accommodation: "Sajek Eco Cottage & Tent",
+    organizer: MOCK_USERS[3], // Rashed Karim
+    members: [MOCK_USERS[3], MOCK_USERS[2]], // Rashed, Sadia
+    requests: [],
+    itinerary: [
+      { day: "Day 1", plan: "Meet at Khagrachari town. Ride Chander Gari jeep under military escort up to Sajek." },
+      { day: "Day 2", plan: "Sunrise at Konglak Para peak. Helipad campfire & stargazing at night." },
+      { day: "Day 3", plan: "Visit Alutila mysterious cave & Risang waterfall on return route to Khagrachari." }
+    ],
+    checklist: [
+      { id: "chk_201", task: "Book Chander Gari 4WD Jeep", completed: true, assignedTo: "Rashed Karim" },
+      { id: "chk_202", task: "Reserve Eco Cottage rooms", completed: true, assignedTo: "Sadia Rahman" }
+    ],
+    expenses: [
+      { id: "exp_201", title: "Jeep Rental Deposit", amount: 6000, paidBy: "Rashed Karim", date: "2026-08-04" }
+    ],
+    messages: [
+      { id: "gm_201", sender: MOCK_USERS[3], text: "The morning clouds in Sajek will be breathtaking! Excited for the trek.", time: "Aug 6, 11:00 AM" }
+    ]
+  },
+  {
+    id: "group_3",
+    title: "Sreemangal Rainforest & Tea Tour 🍃",
+    destination: "Sreemangal Tea Gardens",
+    travelDate: "2026-11-28",
+    estimatedBudget: 6000,
+    maxMembers: 6,
+    transportation: "Parabat Express Train",
+    accommodation: "Tea Resort & Eco Lodge",
+    organizer: MOCK_USERS[2], // Sadia Rahman
+    members: [MOCK_USERS[2]], // Sadia
+    requests: [],
+    itinerary: [
+      { day: "Day 1", plan: "Morning train from Kamalapur. Check in at Eco Lodge, afternoon tea tasting & bicycle ride." },
+      { day: "Day 2", plan: "Guided Lawachara Rainforest trail. Visit Madhabpur Lake and try 7-layer tea." }
+    ],
+    checklist: [
+      { id: "chk_301", task: "Buy Parabat Express train tickets", completed: false, assignedTo: "Sadia Rahman" }
+    ],
+    expenses: [],
+    messages: []
   }
 ];
 

@@ -1,440 +1,515 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { MOCK_POSTS, MOCK_DESTINATIONS } from "../data/mockData";
+import { usePosts } from "../context/PostContext";
 import { 
-  ArrowUp,
-  ArrowDown,
+  Heart,
   MessageCircle, 
   Bookmark, 
-  Share2, 
-  Image as ImageIcon,
+  PlusCircle,
   MapPin, 
   CheckCircle, 
-  Loader2, 
-  Send 
+  Send,
+  Flag,
+  X,
+  AlertTriangle,
+  EyeOff,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Layers
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function SocialFeed() {
   const { currentUser, addPoints } = useAuth();
+  const { posts, toggleLikePost, toggleSavePost, addComment, reportPost } = usePosts();
+  const navigate = useNavigate();
   
-  const [posts, setPosts] = useState(MOCK_POSTS);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [caption, setCaption] = useState("");
-  const [destination, setDestination] = useState(MOCK_DESTINATIONS[0].name);
-  const [imageUrl, setImageUrl] = useState("");
-  
-  // AI Verification States
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifyStep, setVerifyStep] = useState(0);
-  const [verifyStatus, setVerifyStatus] = useState("idle"); // idle, processing, success, fail
-
-  // Comment section states
+  // Comment inputs per post ID
   const [commentInputs, setCommentInputs] = useState({});
 
-  const handleVote = (postId, voteType) => {
-    setPosts(prev => prev.map(post => {
-      if (post.id === postId) {
-        let netScoreChange = 0;
-        let nextVote = null;
+  // Active indices and tabs for multi-media posts
+  const [activePhotoIndices, setActivePhotoIndices] = useState({});
+  const [activeVideoIndices, setActiveVideoIndices] = useState({});
+  const [activeMediaTabs, setActiveMediaTabs] = useState({});
 
-        const currentVote = post.userVote; // 'up', 'down', or null
+  // Report Modal state
+  const [reportingPost, setReportingPost] = useState(null);
+  const [reporterName, setReporterName] = useState("");
+  const [reportReason, setReportReason] = useState("");
+  const [reportSuccessMsg, setReportSuccessMsg] = useState("");
 
-        if (voteType === 'up') {
-          if (currentVote === 'up') {
-            netScoreChange = -1;
-            nextVote = null;
-          } else if (currentVote === 'down') {
-            netScoreChange = 2;
-            nextVote = 'up';
-          } else {
-            netScoreChange = 1;
-            nextVote = 'up';
-          }
-        } else if (voteType === 'down') {
-          if (currentVote === 'down') {
-            netScoreChange = 1;
-            nextVote = null;
-          } else if (currentVote === 'up') {
-            netScoreChange = -2;
-            nextVote = 'down';
-          } else {
-            netScoreChange = -1;
-            nextVote = 'down';
-          }
-        }
-
-        return {
-          ...post,
-          likes: post.likes + netScoreChange,
-          userVote: nextVote
-        };
-      }
-      return post;
-    }));
+  const handleLike = (postId) => {
+    toggleLikePost(postId);
     addPoints(5);
   };
 
   const handleSave = (postId) => {
-    setPosts(prev => prev.map(post => {
-      if (post.id === postId) {
-        return {
-          ...post,
-          hasSaved: !post.hasSaved
-        };
-      }
-      return post;
-    }));
+    toggleSavePost(postId);
   };
 
   const handleCommentSubmit = (postId, e) => {
     e.preventDefault();
     const commentText = commentInputs[postId] || "";
-    if (!commentText.trim() || !currentUser) return;
+    if (!commentText.trim()) return;
 
-    setPosts(prev => prev.map(post => {
-      if (post.id === postId) {
-        return {
-          ...post,
-          comments: [
-            ...post.comments,
-            { id: Date.now().toString(), user: currentUser.username, text: commentText }
-          ]
-        };
-      }
-      return post;
-    }));
-
+    addComment(postId, currentUser || "traveler", commentText);
     setCommentInputs(prev => ({ ...prev, [postId]: "" }));
     
     // Add points for active engagement
     const result = addPoints(10);
     if (result && result.leveledUp) {
-      triggerConfetti(result.league);
+      confetti({
+        particleCount: 120,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
     }
   };
 
-  const triggerConfetti = (newLeague) => {
-    confetti({
-      particleCount: 150,
-      spread: 80,
-      origin: { y: 0.6 }
-    });
+  const openReportModal = (post) => {
+    setReportingPost(post);
+    setReporterName(currentUser?.name || currentUser?.username || "");
+    setReportReason("");
+    setReportSuccessMsg("");
   };
 
-  // Simulate AI Verification Flow
-  const handlePublish = async (e) => {
+  const submitReport = (e) => {
     e.preventDefault();
-    if (!caption || !imageUrl) return;
+    if (!reportingPost) return;
 
-    setIsVerifying(true);
-    setVerifyStep(1);
-    setVerifyStatus("processing");
-
-    // Phase 1: Uploading & geometry extraction
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setVerifyStep(2);
-
-    // Phase 2: Metadata and Landmark analysis
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setVerifyStep(3);
-
-    // Phase 3: Compare with Destination geotag
-    await new Promise(resolve => setTimeout(resolve, 1200));
-
-    // Simple simulation logic: check if imageUrl looks like a valid image url
-    const isSuccess = imageUrl.startsWith("http");
-
-    if (isSuccess) {
-      setVerifyStatus("success");
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const newPost = {
-        id: "post_" + Date.now(),
-        author: currentUser,
-        image: imageUrl,
-        caption: caption,
-        destination: destination,
-        likes: 0,
-        comments: [],
-        hasLiked: false,
-        hasSaved: false,
-        time: "Just now"
-      };
-
-      setPosts([newPost, ...posts]);
-      
-      // Award points for verified media + level checking
-      const res = addPoints(50);
-      if (res) {
-        triggerConfetti();
-        if (res.leveledUp) {
-          alert(`🎉 LEAGUE UPGRADED! You are now a ${res.league}!`);
-        }
-      }
-
-      setIsModalOpen(false);
-      // Reset form
-      setCaption("");
-      setImageUrl("");
-    } else {
-      setVerifyStatus("fail");
-    }
-
-    setIsVerifying(false);
-    setVerifyStatus("idle");
-    setVerifyStep(0);
+    reportPost(reportingPost.id, reporterName, reportReason);
+    setReportSuccessMsg("✅ Thank you. Your report has been submitted to admin moderation.");
+    
+    setTimeout(() => {
+      setReportingPost(null);
+      setReportSuccessMsg("");
+      setReporterName("");
+      setReportReason("");
+    }, 1800);
   };
 
-  // Preset Unsplash templates for easy testing
-  const presets = [
-    { name: "Cox's Bazar", url: "https://images.unsplash.com/photo-1589308078059-be1415eab4c3?w=800" },
-    { name: "Sajek Valley", url: "https://images.unsplash.com/photo-1628155930542-3c7a64e2c833?w=800" },
-    { name: "Tea Gardens", url: "https://images.unsplash.com/photo-1597843798940-02c349a5b3a4?w=800" },
-    { name: "Saint Martin", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800" }
-  ];
+  // Helper for YouTube embed link parsing
+  const getEmbedUrl = (url) => {
+    if (!url) return "";
+    if (url.includes("youtube.com/watch?v=")) {
+      const videoId = url.split("v=")[1]?.split("&")[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes("youtu.be/")) {
+      const videoId = url.split("youtu.be/")[1]?.split("?")[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    return url;
+  };
+
+  // Filter posts: hide hidden posts unless user is admin
+  const visiblePosts = posts.filter(post => !post.isHidden || currentUser?.isAdmin);
 
   return (
     <div className="container mx-auto px-4 md:px-8 py-6 max-w-4xl relative">
-      <div className="flex justify-between items-center mb-8">
+      
+      {/* Feed Header & Navigation to Dedicated Create Post Page */}
+      <div className="flex justify-between items-center mb-8 bg-base-100 border border-base-200 p-6 rounded-3xl shadow-sm">
         <div>
-          <h1 className="text-3xl font-black tracking-tight mb-1">Traveler Feed</h1>
-          <p className="text-sm text-base-content/60">Discover shared itineraries and photo updates from the community.</p>
+          <h1 className="text-3xl font-black tracking-tight mb-1 text-base-content">Traveler Feed</h1>
+          <p className="text-xs sm:text-sm text-base-content/60">Discover shared itineraries, multiple photos, and video experiences from travelers.</p>
         </div>
+        
+        {/* Redirects to dedicated /create-post page */}
         <button 
-          onClick={() => setIsModalOpen(true)}
-          className="btn btn-primary text-primary-content font-black rounded-xl shadow-lg border-none capitalize gap-2"
+          onClick={() => navigate("/create-post")}
+          className="btn btn-primary text-white font-bold rounded-2xl shadow-lg border-none capitalize gap-2 px-5 shrink-0"
         >
-          <ImageIcon className="w-4 h-4" /> Share Story
+          <PlusCircle className="w-5 h-5" /> Share Story
         </button>
       </div>
 
       {/* Feed Posts */}
       <div className="space-y-6">
-        {posts.map((post) => (
-          <div key={post.id} className="card bg-base-100 border border-base-200 overflow-hidden shadow-sm">
-            {/* Header */}
-            <div className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Link to={`/profile/${post.author.id || post.author.username}`}>
-                  <img src={post.author.avatar} alt={post.author.name} className="w-10 h-10 rounded-full object-cover border border-base-300 hover:opacity-80 transition-opacity" />
-                </Link>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Link to={`/profile/${post.author.id || post.author.username}`} className="font-bold text-sm hover:underline">
-                      {post.author.name}
-                    </Link>
-                    <span className="badge badge-sm badge-outline text-[10px] opacity-75">{post.author.league}</span>
-                  </div>
-                  <span className="text-[10px] text-base-content/50">{post.time}</span>
-                </div>
-              </div>
-              
-              {post.destination && (
-                <div className="flex items-center gap-1 text-xs text-primary font-bold bg-primary/10 py-1.5 px-3 rounded-full">
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>{post.destination}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Media Image */}
-            <figure className="relative max-h-[500px] overflow-hidden bg-black flex items-center justify-center">
-              <img src={post.image} alt="Travel Post" className="w-full object-cover h-[400px]" />
-              <div className="absolute top-3 right-3 bg-green-500 text-white font-bold text-[10px] py-1 px-2.5 rounded-full flex items-center gap-1 shadow-md">
-                <CheckCircle className="w-3 h-3" />
-                <span>AI Verified Media</span>
-              </div>
-            </figure>
-
-            {/* Engagement Actions */}
-            <div className="p-4 space-y-4">
-              <div className="flex justify-between items-center">
-                <div className="flex gap-4">
-                  
-                  {/* Upvote & Downvote Control */}
-                  <div className="flex items-center gap-1 bg-base-200 border border-base-300 rounded-full px-2 py-0.5 shadow-inner">
-                    <button 
-                      onClick={() => handleVote(post.id, "up")} 
-                      className={`hover:text-primary transition-colors p-1 ${post.userVote === "up" ? "text-primary scale-110 animate-bounce" : "text-base-content/60"}`}
-                      title="Upvote"
-                    >
-                      <ArrowUp className="w-4 h-4" />
-                    </button>
-                    <span className="font-black text-xs px-1.5 text-base-content min-w-[16px] text-center">{post.likes}</span>
-                    <button 
-                      onClick={() => handleVote(post.id, "down")} 
-                      className={`hover:text-error transition-colors p-1 ${post.userVote === "down" ? "text-error scale-110" : "text-base-content/60"}`}
-                      title="Downvote"
-                    >
-                      <ArrowDown className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-base-content/75 bg-base-200 border border-base-300 rounded-full px-3 py-0.5">
-                    <MessageCircle className="w-4 h-4 text-base-content/70" />
-                    <span>{post.comments.length} Comments</span>
-                  </div>
-                </div>
-                <button onClick={() => handleSave(post.id)} className="hover:text-primary transition-colors">
-                  <Bookmark className={`w-5 h-5 ${post.hasSaved ? "fill-primary text-primary" : ""}`} />
-                </button>
-              </div>
-
-              {/* Caption */}
-              <div>
-                <p className="text-sm leading-relaxed">
-                  <span className="font-bold mr-2">@{post.author.username}</span>
-                  {post.caption}
-                </p>
-              </div>
-
-              {/* Inline Comments */}
-              {post.comments.length > 0 && (
-                <div className="bg-base-200/50 rounded-xl p-3 space-y-2 border border-base-200">
-                  {post.comments.map((comment) => (
-                    <div key={comment.id} className="text-xs">
-                      <span className="font-bold text-primary mr-1.5">@{comment.user}</span>
-                      <span className="text-base-content/85">{comment.text}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Add Comment Form */}
-              <form onSubmit={(e) => handleCommentSubmit(post.id, e)} className="flex gap-2 items-center pt-2 border-t border-base-200">
-                <input 
-                  type="text" 
-                  placeholder="Write a comment..." 
-                  className="input input-sm input-bordered flex-1 rounded-lg text-xs"
-                  value={commentInputs[post.id] || ""}
-                  onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
-                />
-                <button type="submit" className="btn btn-sm btn-ghost btn-circle">
-                  <Send className="w-4 h-4 text-primary" />
-                </button>
-              </form>
-            </div>
+        {visiblePosts.length === 0 ? (
+          <div className="text-center py-16 bg-base-100 rounded-3xl border border-dashed border-base-300 p-8 space-y-3">
+            <MapPin className="w-12 h-12 text-primary mx-auto opacity-50" />
+            <h3 className="font-bold text-lg">No travel stories available</h3>
+            <p className="text-xs text-base-content/60 max-w-md mx-auto">
+              Be the first to publish a travel experience with text, photos, and videos!
+            </p>
+            <button 
+              onClick={() => navigate("/create-post")}
+              className="btn btn-primary btn-sm rounded-xl font-bold gap-1 mt-2 text-white"
+            >
+              <PlusCircle className="w-4 h-4" /> Create New Post
+            </button>
           </div>
-        ))}
-      </div>
+        ) : (
+          visiblePosts.map((post) => {
+            // Support multiple images and multiple videos
+            const allImages = post.images && post.images.length > 0 
+              ? post.images 
+              : (post.image ? [post.image] : []);
+              
+            const allVideos = post.videos && post.videos.length > 0 
+              ? post.videos 
+              : (post.video ? [post.video] : []);
 
-      {/* Share Story Modal */}
-      {isModalOpen && (
-        <div className="modal modal-open">
-          <div className="modal-box rounded-2xl max-w-lg border border-base-300">
-            <h3 className="font-black text-xl mb-4">Share Travel Story</h3>
-            
-            {isVerifying ? (
-              <div className="flex flex-col items-center justify-center py-10 space-y-4">
-                <Loader2 className="w-12 h-12 text-primary animate-spin" />
-                <div className="text-center">
-                  <h4 className="font-bold text-md">AI Verification Engine</h4>
-                  <p className="text-xs text-base-content/60 mt-1">
-                    {verifyStep === 1 && "Uploading photo & parsing EXIF data..."}
-                    {verifyStep === 2 && "Analyzing landscape morphology & color layers..."}
-                    {verifyStep === 3 && `Comparing landmark tags with ${destination}...`}
-                  </p>
-                </div>
+            const currentTab = activeMediaTabs[post.id] || (allVideos.length > 0 && allImages.length === 0 ? "videos" : "photos");
+            const currentImgIdx = activePhotoIndices[post.id] || 0;
+            const currentVidIdx = activeVideoIndices[post.id] || 0;
+
+            return (
+              <div key={post.id} className={`card bg-base-100 border border-base-200 overflow-hidden shadow-sm rounded-3xl transition-all ${post.isHidden ? "opacity-60 border-warning" : ""}`}>
                 
-                {/* Simulated scanner visual */}
-                <div className="w-full bg-base-300 h-1.5 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-primary h-full transition-all duration-500" 
-                    style={{ width: `${(verifyStep / 3) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handlePublish} className="space-y-4">
-                <div className="form-control">
-                  <label className="label py-1"><span className="label-text font-semibold text-xs">Destination Tag</span></label>
-                  <select 
-                    className="select select-bordered w-full select-sm text-xs rounded-lg"
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                  >
-                    {MOCK_DESTINATIONS.map(d => (
-                      <option key={d.id} value={d.name}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-control">
-                  <label className="label py-1"><span className="label-text font-semibold text-xs text-warning">Photo URL (Paste any online image URL)</span></label>
-                  <input 
-                    type="url" 
-                    placeholder="https://images.unsplash.com/photo-..." 
-                    className="input input-sm input-bordered w-full text-xs rounded-lg"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    required
-                  />
-                  
-                  {/* Preset helpers */}
-                  <div className="mt-2">
-                    <span className="text-[10px] text-base-content/50 block mb-1">Or use quick templates:</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {presets.map((pre, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => {
-                            setImageUrl(pre.url);
-                            setDestination(pre.name === "Tea Gardens" ? "Sreemangal Tea Gardens" : pre.name === "Saint Martin" ? "Saint Martin's Island" : `${pre.name} Beach` || `${pre.name} Valley`);
-                          }}
-                          className="btn btn-xs btn-outline text-[9px] capitalize rounded-md border-base-300"
-                        >
-                          {pre.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="form-control">
-                  <label className="label py-1"><span className="label-text font-semibold text-xs">Caption</span></label>
-                  <textarea 
-                    rows="3"
-                    placeholder="Write details of your experience..." 
-                    className="textarea textarea-bordered w-full text-xs rounded-lg"
-                    value={caption}
-                    onChange={(e) => setCaption(e.target.value)}
-                    required
-                  />
-                </div>
-
-                {verifyStatus === "fail" && (
-                  <div className="alert alert-error text-xs p-2 rounded-lg">
-                    <span>AI verification failed! The image URL must be a valid online image link. Try presets.</span>
+                {/* Hidden Notice for Admin */}
+                {post.isHidden && (
+                  <div className="bg-warning/20 border-b border-warning/30 px-4 py-2 flex items-center justify-between text-xs text-warning-content font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <EyeOff className="w-4 h-4 text-warning" /> Hidden by Admin Moderation
+                    </span>
+                    <span className="text-[10px] opacity-75">Visible to admins only</span>
                   </div>
                 )}
 
-                <div className="modal-action gap-2 mt-6">
+                {/* Post Header */}
+                <div className="p-4 flex items-center justify-between border-b border-base-200/50">
+                  <div className="flex items-center gap-3">
+                    <Link to={`/profile/${post.author?.id || post.author?.username}`}>
+                      <img 
+                        src={post.author?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${post.author?.username}`} 
+                        alt={post.author?.name} 
+                        className="w-10 h-10 rounded-full object-cover border border-base-300 hover:opacity-80 transition-opacity" 
+                      />
+                    </Link>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Link to={`/profile/${post.author?.id || post.author?.username}`} className="font-bold text-sm hover:underline">
+                          {post.author?.name}
+                        </Link>
+                        <span className="badge badge-sm badge-outline text-[10px] opacity-75">{post.author?.league || "Explorer"}</span>
+                      </div>
+                      <span className="text-[10px] text-base-content/50">{post.time}</span>
+                    </div>
+                  </div>
+                  
+                  {post.destination && (
+                    <div className="flex items-center gap-1 text-xs text-primary font-bold bg-primary/10 py-1.5 px-3 rounded-full">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span>{post.destination}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* MULTI-MEDIA CONTAINER (Multiple Photos & Multiple Videos) */}
+                {(allImages.length > 0 || allVideos.length > 0) && (
+                  <div className="relative bg-black border-b border-base-200 overflow-hidden">
+                    
+                    {/* Media Type Tab Selector if both Photos & Videos exist */}
+                    {allImages.length > 0 && allVideos.length > 0 && (
+                      <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex gap-2 justify-center z-10 relative">
+                        <button 
+                          onClick={() => setActiveMediaTabs({ ...activeMediaTabs, [post.id]: "photos" })}
+                          className={`btn btn-xs rounded-xl gap-1.5 font-bold ${
+                            currentTab === "photos" ? "btn-primary text-white" : "btn-ghost text-slate-300"
+                          }`}
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" /> Photos ({allImages.length})
+                        </button>
+                        <button 
+                          onClick={() => setActiveMediaTabs({ ...activeMediaTabs, [post.id]: "videos" })}
+                          className={`btn btn-xs rounded-xl gap-1.5 font-bold ${
+                            currentTab === "videos" ? "btn-error text-white" : "btn-ghost text-slate-300"
+                          }`}
+                        >
+                          <VideoIcon className="w-3.5 h-3.5" /> Videos ({allVideos.length})
+                        </button>
+                      </div>
+                    )}
+
+                    {/* PHOTOS VIEW */}
+                    {currentTab === "photos" && allImages.length > 0 && (
+                      <figure className="relative max-h-[500px] overflow-hidden bg-black flex flex-col items-center justify-center">
+                        <img 
+                          src={allImages[currentImgIdx]} 
+                          alt={`Travel Post Photo ${currentImgIdx + 1}`} 
+                          className="w-full object-cover max-h-[450px]" 
+                        />
+
+                        {/* Top Info Badges */}
+                        <div className="absolute top-3 left-3 bg-black/70 backdrop-blur text-white font-bold text-[10px] py-1 px-3 rounded-full flex items-center gap-1.5 shadow-md">
+                          <Layers className="w-3.5 h-3.5 text-primary" />
+                          <span>Photo {currentImgIdx + 1} of {allImages.length}</span>
+                        </div>
+
+                        <div className="absolute top-3 right-3 bg-green-600 text-white font-bold text-[10px] py-1 px-2.5 rounded-full flex items-center gap-1 shadow-md">
+                          <CheckCircle className="w-3 h-3" />
+                          <span>Verified Media</span>
+                        </div>
+
+                        {/* Previous & Next Carousel Arrows */}
+                        {allImages.length > 1 && (
+                          <>
+                            <button 
+                              onClick={() => setActivePhotoIndices({
+                                ...activePhotoIndices,
+                                [post.id]: (currentImgIdx - 1 + allImages.length) % allImages.length
+                              })}
+                              className="absolute left-3 top-1/2 -translate-y-1/2 btn btn-circle btn-sm bg-black/60 hover:bg-black text-white border-none shadow-lg"
+                            >
+                              <ChevronLeft className="w-5 h-5" />
+                            </button>
+                            <button 
+                              onClick={() => setActivePhotoIndices({
+                                ...activePhotoIndices,
+                                [post.id]: (currentImgIdx + 1) % allImages.length
+                              })}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 btn btn-circle btn-sm bg-black/60 hover:bg-black text-white border-none shadow-lg"
+                            >
+                              <ChevronRight className="w-5 h-5" />
+                            </button>
+
+                            {/* Thumbnail Selector Strip */}
+                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-black/70 backdrop-blur p-1.5 rounded-full z-10">
+                              {allImages.map((img, idx) => (
+                                <button 
+                                  key={idx} 
+                                  onClick={() => setActivePhotoIndices({ ...activePhotoIndices, [post.id]: idx })}
+                                  className={`w-3 h-3 rounded-full transition-all ${
+                                    idx === currentImgIdx ? "bg-primary scale-125" : "bg-white/50 hover:bg-white"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </figure>
+                    )}
+
+                    {/* VIDEOS VIEW */}
+                    {(currentTab === "videos" || (allImages.length === 0 && allVideos.length > 0)) && allVideos.length > 0 && (
+                      <div className="relative bg-black flex flex-col items-center justify-center min-h-[300px]">
+                        
+                        {allVideos[currentVidIdx]?.includes("youtube") || allVideos[currentVidIdx]?.includes("youtu.be") ? (
+                          <iframe 
+                            src={getEmbedUrl(allVideos[currentVidIdx])} 
+                            title="Travel Video" 
+                            className="w-full h-80 sm:h-96 border-none"
+                            allowFullScreen 
+                          />
+                        ) : (
+                          <video 
+                            src={allVideos[currentVidIdx]} 
+                            controls 
+                            className="w-full max-h-[450px] object-cover" 
+                          />
+                        )}
+
+                        {/* Top Info Badges */}
+                        <div className="absolute top-3 left-3 bg-black/70 backdrop-blur text-white font-bold text-[10px] py-1 px-3 rounded-full flex items-center gap-1.5 shadow-md">
+                          <VideoIcon className="w-3.5 h-3.5 text-error" />
+                          <span>Video Clip {currentVidIdx + 1} of {allVideos.length}</span>
+                        </div>
+
+                        {/* Multiple Videos Switcher */}
+                        {allVideos.length > 1 && (
+                          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-black/80 backdrop-blur p-1.5 rounded-2xl z-10 border border-slate-700">
+                            {allVideos.map((_, idx) => (
+                              <button 
+                                key={idx} 
+                                onClick={() => setActiveVideoIndices({ ...activeVideoIndices, [post.id]: idx })}
+                                className={`btn btn-xs rounded-xl font-bold ${
+                                  idx === currentVidIdx ? "btn-error text-white" : "btn-ghost text-slate-300"
+                                }`}
+                              >
+                                Clip #{idx + 1}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  </div>
+                )}
+
+                {/* Post Content & Engagement Actions */}
+                <div className="p-5 space-y-4">
+                  
+                  {/* Engagement Bar: Like (Heart), Comment, Save, Report */}
+                  <div className="flex justify-between items-center border-b border-base-200 pb-3">
+                    <div className="flex items-center gap-3">
+                      
+                      {/* LIKE BUTTON */}
+                      <button 
+                        onClick={() => handleLike(post.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all border ${
+                          post.hasLiked 
+                            ? "bg-rose-500/10 text-rose-600 border-rose-500/30 scale-105" 
+                            : "bg-base-200/70 hover:bg-base-300 text-base-content/80 border-base-300"
+                        }`}
+                        title="Like Post"
+                      >
+                        <Heart className={`w-4 h-4 ${post.hasLiked ? "fill-rose-600 text-rose-600" : ""}`} />
+                        <span>{post.likes}</span>
+                      </button>
+
+                      {/* COMMENT COUNTER / EXPAND */}
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-base-content/80 bg-base-200/70 border border-base-300 rounded-full px-3 py-1.5">
+                        <MessageCircle className="w-4 h-4 text-base-content/70" />
+                        <span>{post.comments?.length || 0} Comments</span>
+                      </div>
+
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* BOOKMARK BUTTON */}
+                      <button onClick={() => handleSave(post.id)} className="btn btn-ghost btn-xs btn-circle hover:text-primary">
+                        <Bookmark className={`w-4.5 h-4.5 ${post.hasSaved ? "fill-primary text-primary" : "text-base-content/60"}`} />
+                      </button>
+
+                      {/* REPORT BUTTON */}
+                      <button 
+                        onClick={() => openReportModal(post)} 
+                        className="btn btn-ghost btn-xs btn-circle text-base-content/60 hover:text-error hover:bg-error/10"
+                        title="Report Post to Admin"
+                      >
+                        <Flag className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Caption / Description */}
+                  <div>
+                    <p className="text-sm leading-relaxed">
+                      <span className="font-bold mr-2 text-base-content">@{post.author?.username || "traveler"}</span>
+                      {post.caption}
+                    </p>
+                  </div>
+
+                  {/* Inline Comments List */}
+                  {post.comments && post.comments.length > 0 && (
+                    <div className="bg-base-200/50 rounded-2xl p-3.5 space-y-2 border border-base-200 max-h-48 overflow-y-auto">
+                      {post.comments.map((comment, i) => (
+                        <div key={comment.id || i} className="text-xs leading-snug flex items-start justify-between">
+                          <div>
+                            <span className="font-bold text-primary mr-1.5">@{comment.user}</span>
+                            <span className="text-base-content/85">{comment.text}</span>
+                          </div>
+                          {comment.time && <span className="text-[9px] text-base-content/40 ml-2 shrink-0">{comment.time}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add Comment Form */}
+                  <form onSubmit={(e) => handleCommentSubmit(post.id, e)} className="flex gap-2 items-center pt-2 border-t border-base-200">
+                    <input 
+                      type="text" 
+                      placeholder="Write a comment..." 
+                      className="input input-sm input-bordered flex-1 rounded-xl text-xs bg-base-100 focus:border-primary"
+                      value={commentInputs[post.id] || ""}
+                      onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
+                    />
+                    <button type="submit" className="btn btn-sm btn-primary text-white rounded-xl font-bold text-xs px-3">
+                      <Send className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+
+                </div>
+
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* REPORT POST MODAL */}
+      {reportingPost && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-base-100 border border-base-300 w-full max-w-md rounded-3xl p-6 shadow-2xl relative space-y-4">
+            
+            <button 
+              onClick={() => setReportingPost(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-full text-base-content/50 hover:bg-base-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-base-200 pb-3">
+              <div className="w-10 h-10 rounded-2xl bg-error/10 text-error flex items-center justify-center shrink-0">
+                <Flag className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-base-content">Report Post to Admin</h3>
+                <p className="text-[11px] text-base-content/60">Flag content for community guidelines or safety review.</p>
+              </div>
+            </div>
+
+            {reportSuccessMsg ? (
+              <div className="alert alert-success bg-success/10 border-success/20 text-success text-xs font-semibold p-4 rounded-2xl text-center">
+                {reportSuccessMsg}
+              </div>
+            ) : (
+              <form onSubmit={submitReport} className="space-y-4">
+                
+                {/* Optional Reporter Name / Handle Input */}
+                <div className="form-control">
+                  <label className="label py-1">
+                    <span className="label-text font-bold text-xs">Your Name / Handle (Optional)</span>
+                    <span className="label-text-alt text-[10px] text-base-content/50">Optional</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="Enter your name or handle (e.g. Aria Jahan)" 
+                    className="input input-sm input-bordered w-full text-xs rounded-xl"
+                    value={reporterName}
+                    onChange={(e) => setReporterName(e.target.value)}
+                  />
+                </div>
+
+                {/* Reason Input */}
+                <div className="form-control">
+                  <label className="label py-1">
+                    <span className="label-text font-bold text-xs">Reason for Reporting</span>
+                  </label>
+                  <textarea 
+                    rows="3"
+                    placeholder="Describe why this post is inappropriate, misleading, spam, or unsafe..." 
+                    className="textarea textarea-bordered w-full text-xs rounded-xl"
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="p-3 bg-base-200/50 rounded-xl text-[10px] text-base-content/60 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-warning shrink-0" />
+                  <span>Submitted reports are reviewed directly by the platform administration team in the Admin Panel.</span>
+                </div>
+
+                <div className="flex gap-2 pt-2">
                   <button 
                     type="button" 
-                    onClick={() => {
-                      setIsModalOpen(false);
-                      setImageUrl("");
-                      setCaption("");
-                    }} 
-                    className="btn btn-sm btn-ghost rounded-lg text-xs"
+                    onClick={() => setReportingPost(null)} 
+                    className="btn btn-ghost btn-sm flex-1 rounded-xl text-xs font-bold"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit" 
-                    className="btn btn-sm btn-primary text-primary-content font-bold rounded-lg text-xs"
+                    className="btn btn-error btn-sm flex-1 rounded-xl text-xs font-bold text-white shadow-md shadow-error/20"
                   >
-                    Verify & Publish
+                    Submit Report
                   </button>
                 </div>
+
               </form>
             )}
+
           </div>
         </div>
       )}
+
     </div>
   );
 }
