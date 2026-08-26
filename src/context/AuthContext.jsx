@@ -1,36 +1,38 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signInWithPopup,
-  GoogleAuthProvider,
-  sendPasswordResetEmail,
-  signOut, 
-  onAuthStateChanged,
-  updateProfile
-} from "firebase/auth";
-import { auth, isFirebaseConfigured } from "../firebase/config";
-import { MOCK_USERS } from "../data/mockData";
+import api from "../services/api";
 
-const AuthContext = createContext();
+const AuthContext = createContext({});
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  return context || {};
 }
 
 // Function to calculate League based on points
 export function calculateLeague(points) {
-  if (points >= 4000) return "Legend";
-  if (points >= 2000) return "Expert";
-  if (points >= 1000) return "Traveler";
-  if (points >= 300) return "Adventurer";
+  const pts = parseInt(points || 0, 10);
+  if (pts >= 4000) return "Legend";
+  if (pts >= 2000) return "Expert";
+  if (pts >= 1000) return "Traveler";
+  if (pts >= 300) return "Adventurer";
   return "Explorer";
 }
 
 export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isMockAuth, setIsMockAuth] = useState(!isFirebaseConfigured);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem("ts_current_user");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse saved user", e);
+      }
+    }
+    return null;
+  });
+
+  const [loading, setLoading] = useState(false);
+
   const [adminAccounts, setAdminAccounts] = useState(() => {
     const saved = localStorage.getItem("ts_admin_accounts");
     return saved ? JSON.parse(saved) : [
@@ -72,357 +74,235 @@ export function AuthProvider({ children }) {
     return clean.startsWith("admin") || adminAccounts.some(a => a.handle.toLowerCase() === clean);
   };
 
-  // Initialize session
+  // Sync current user to local storage whenever it changes
   useEffect(() => {
-    // 1. Check local session storage first (for mock & local admin logins)
-    const savedUser = localStorage.getItem("ts_current_user");
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        parsed.isAdmin = checkIsAdmin(parsed.email);
-        setCurrentUser(parsed);
-        setLoading(false);
-        return;
-      } catch (e) {
-        console.error("Failed to parse saved user", e);
-      }
-    }
-
-    // 2. Check Firebase session if configured
-    if (isFirebaseConfigured && auth) {
-      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-        if (firebaseUser) {
-          const savedPoints = localStorage.getItem(`pts_${firebaseUser.uid}`) || "350";
-          const pts = parseInt(savedPoints, 10);
-          const league = calculateLeague(pts);
-          const userEmail = firebaseUser.email || "";
-          const isAdminUser = checkIsAdmin(userEmail) || firebaseUser.displayName?.toLowerCase().includes("admin");
-          
-          setCurrentUser({
-            id: firebaseUser.uid,
-            uid: firebaseUser.uid,
-            name: firebaseUser.displayName || userEmail.split("@")[0],
-            username: userEmail ? userEmail.split("@")[0] : "traveler",
-            email: userEmail,
-            avatar: firebaseUser.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${firebaseUser.uid}`,
-            points: pts,
-            league: league,
-            isAdmin: isAdminUser,
-            bio: isAdminUser ? "Platform Administrator" : "Avid traveler exploring with Laga Tour!",
-            followers: 0,
-            following: 0,
-            stats: { trips: 0, saved: 0, cities: 0 }
-          });
-        } else {
-          setCurrentUser(null);
-        }
-        setLoading(false);
-      });
-      return unsubscribe;
+    if (currentUser) {
+      localStorage.setItem("ts_current_user", JSON.stringify(currentUser));
     } else {
-      setLoading(false);
+      localStorage.removeItem("ts_current_user");
+    }
+  }, [currentUser]);
+
+  // On initial mount, automatically fetch freshest profile from MySQL to prevent stale cache
+  useEffect(() => {
+    if (currentUser && (currentUser.id || currentUser.user_id)) {
+      const uId = currentUser.id || currentUser.user_id;
+      api.getUserProfile(uId).then((res) => {
+        if (res && res.user) {
+          const freshUser = {
+            ...currentUser,
+            ...res.user,
+            name: [res.user.firstName, res.user.lastName].filter(Boolean).join(" ") || res.user.name || currentUser.name,
+            avatar: res.user.avatar || res.user.profilePictureUrl || currentUser.avatar,
+            isAdmin: checkIsAdmin(res.user.email) || res.user.isAdmin
+          };
+          setCurrentUser(freshUser);
+          localStorage.setItem("ts_current_user", JSON.stringify(freshUser));
+        }
+      }).catch(() => {});
     }
   }, []);
 
-  // Signup action
-  async function signup(email, password, displayName) {
-    setLoading(true);
+  /**
+   * Refreshes the active user's profile from the MySQL database
+   */
+  async function refreshProfile() {
+    if (!currentUser) return null;
+    const uId = currentUser.id || currentUser.user_id;
     try {
-      const cleanEmail = (email || "").trim().toLowerCase();
-      
-      // Basic input validation
-      if (!cleanEmail) {
-        throw { code: "auth/missing-email", message: "Email address is required." };
-      }
-      if (!/\S+@\S+\.\S+/.test(cleanEmail)) {
-        throw { code: "auth/invalid-email", message: "Invalid email address format." };
-      }
-      if (!password || password.length < 6) {
-        throw { code: "auth/weak-password", message: "Password must be at least 6 characters long." };
-      }
-
-      // Check admin signup restriction
-      if (cleanEmail.startsWith("admin")) {
-        throw { 
-          code: "auth/admin-signup-disallowed", 
-          message: "Admin accounts cannot be registered via public signup. Please contact a system administrator." 
+      const res = await api.getUserProfile(uId);
+      if (res && res.user) {
+        const freshUser = {
+          ...currentUser,
+          ...res.user,
+          name: [res.user.firstName, res.user.lastName].filter(Boolean).join(" ") || res.user.name || currentUser.name,
+          avatar: res.user.avatar || res.user.profilePictureUrl || currentUser.avatar,
+          isAdmin: checkIsAdmin(res.user.email) || res.user.isAdmin
         };
+        setCurrentUser(freshUser);
+        localStorage.setItem("ts_current_user", JSON.stringify(freshUser));
+        return freshUser;
       }
-
-      if (isFirebaseConfigured && auth) {
-        const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        const user = userCredential.user;
-        const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.uid}`;
-        
-        await updateProfile(user, {
-          displayName: displayName,
-          photoURL: avatarUrl
-        });
-
-        const pts = 100;
-        localStorage.setItem(`pts_${user.uid}`, pts.toString());
-
-        const newUser = {
-          id: user.uid,
-          uid: user.uid,
-          name: displayName,
-          username: cleanEmail.split("@")[0],
-          email: cleanEmail,
-          avatar: avatarUrl,
-          points: pts,
-          league: "Explorer",
-          isAdmin: false,
-          bio: "Just joined Laga Tour! Ready to travel.",
-          followers: 0,
-          following: 0,
-          stats: { trips: 0, saved: 0, cities: 0 }
-        };
-        setCurrentUser(newUser);
-        return newUser;
-      } else {
-        // Mock signup duplicate check
-        const existingMock = MOCK_USERS.find(u => u.username === cleanEmail.split("@")[0]);
-        if (existingMock) {
-          throw { code: "auth/email-already-in-use", message: "An account with this email address already exists." };
-        }
-
-        const mockUid = "mock_" + Math.random().toString(36).substr(2, 9);
-        const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${mockUid}`;
-        const pts = 100;
-        
-        const newUser = {
-          id: mockUid,
-          uid: mockUid,
-          name: displayName,
-          username: cleanEmail.split("@")[0],
-          email: cleanEmail,
-          avatar: avatarUrl,
-          points: pts,
-          league: "Explorer",
-          isAdmin: false,
-          bio: "Exploring the world with Laga Tour!",
-          followers: 0,
-          following: 0,
-          stats: { trips: 0, saved: 0, cities: 0 }
-        };
-        setCurrentUser(newUser);
-        localStorage.setItem("ts_current_user", JSON.stringify(newUser));
-        return newUser;
-      }
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      console.warn("Could not refresh profile from MySQL:", e);
     }
+    return currentUser;
   }
 
-  // Login action
+  /**
+   * Send 6-digit email verification OTP
+   */
+  async function sendVerificationCode(email, purpose = "signup") {
+    return await api.sendVerificationCode(email, purpose);
+  }
+
+  /**
+   * Verify email OTP code
+   */
+  async function verifyCode(email, code, purpose = "signup") {
+    return await api.verifyCode(email, code, purpose);
+  }
+
+  /**
+   * User Signup using Node.js backend and MySQL
+   */
+  async function signup(name, email, password, code) {
+    const res = await api.signup(name, email, password, code);
+    if (res && res.user) {
+      const userWithAdmin = {
+        ...res.user,
+        isAdmin: checkIsAdmin(res.user.email)
+      };
+      setCurrentUser(userWithAdmin);
+      localStorage.setItem("ts_current_user", JSON.stringify(userWithAdmin));
+      return userWithAdmin;
+    }
+    throw new Error(res?.message || "Failed to sign up.");
+  }
+
+  /**
+   * User / Admin Login using Node.js backend and MySQL
+   */
   async function login(email, password) {
-    setLoading(true);
-    try {
-      let cleanEmail = (email || "").trim().toLowerCase();
-      
-      if (!cleanEmail) {
-        throw { code: "auth/missing-email", message: "Email address or username is required." };
+    // 1. Check local admin accounts first if logging in as admin
+    const cleanEmail = email.toLowerCase().trim();
+    const matchedAdmin = adminAccounts.find(a => a.handle.toLowerCase() === cleanEmail && a.password === password);
+    
+    if (matchedAdmin) {
+      if (matchedAdmin.status === "Blocked") {
+        throw new Error("This administrator account has been disabled/blocked by the Super Admin.");
       }
-      if (!password) {
-        throw { code: "auth/missing-password", message: "Password is required." };
-      }
-
-      // Format simple username inputs if no domain provided
-      if (!cleanEmail.includes("@")) {
-        cleanEmail = `${cleanEmail}@laga.tour`;
-      }
-
-      if (!/\S+@\S+\.\S+/.test(cleanEmail)) {
-        throw { code: "auth/invalid-email", message: "Invalid email address format." };
-      }
-
-      // 1. LOCAL ADMIN LOGIN HANDLER (Bypasses Firebase for local admin testing)
-      const matchedAdmin = adminAccounts.find(a => a.handle.toLowerCase() === cleanEmail);
-      const isAdminAccount = cleanEmail.startsWith("admin") || Boolean(matchedAdmin);
-
-      if (isAdminAccount) {
-        if (matchedAdmin && matchedAdmin.status === "Blocked") {
-          throw { code: "auth/user-disabled", message: "This administrator account has been blocked by system management." };
-        }
-
-        const expectedPass = matchedAdmin ? matchedAdmin.password : "admin";
-        if (password !== expectedPass && password !== "admin" && password !== "admin123" && password !== "password") {
-          throw { code: "auth/wrong-password", message: "Incorrect password for administrator account." };
-        }
-
-        const cleanName = cleanEmail.split("@")[0].replace("admin.", "").replace("admin_", "");
-        const adminUser = {
-          id: matchedAdmin?.id || "admin_" + cleanName,
-          uid: matchedAdmin?.id || "admin_" + cleanName,
-          name: cleanName === "admin" ? "System Administrator" : cleanName.charAt(0).toUpperCase() + cleanName.slice(1) + " (Admin)",
-          username: cleanEmail.split("@")[0],
-          email: cleanEmail,
-          avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=" + cleanName,
-          points: 5000,
-          league: "Legend",
-          isAdmin: true,
-          status: matchedAdmin?.status || "Active",
-          addedAt: matchedAdmin?.addedAt || "Aug 1, 2026 at 09:00 AM",
-          addedBy: matchedAdmin?.addedBy || "System Root",
-          bio: "Authorized Platform Administrator & Content Moderator.",
-          followers: 9999,
-          following: 0,
-          stats: { trips: 50, saved: 200, cities: 100 }
-        };
-
-        setCurrentUser(adminUser);
-        localStorage.setItem("ts_current_user", JSON.stringify(adminUser));
-        return adminUser;
-      }
-
-      // 2. STANDARD USER LOGIN (Uses Firebase if configured, otherwise mock fallback)
-      if (isFirebaseConfigured && auth) {
-        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-        return userCredential.user;
-      } else {
-        // Standard mock user matching
-        const matchedMock = MOCK_USERS.find(u => 
-          u.username.toLowerCase() === cleanEmail.split("@")[0] || 
-          `${u.username.toLowerCase()}@gmail.com` === cleanEmail ||
-          `${u.username.toLowerCase()}@laga.tour` === cleanEmail
-        );
-        
-        if (matchedMock) {
-          if (password !== "password" && password !== "123456" && password !== "admin123") {
-            throw { code: "auth/wrong-password", message: "Incorrect password. Please try again." };
-          }
-
-          const isAdminUser = checkIsAdmin(`${matchedMock.username}@laga.tour`);
-          const loggedUser = { 
-            ...matchedMock, 
-            email: `${matchedMock.username}@laga.tour`,
-            isAdmin: isAdminUser
-          };
-          setCurrentUser(loggedUser);
-          localStorage.setItem("ts_current_user", JSON.stringify(loggedUser));
-          return loggedUser;
-        }
-
-        // Standard custom user check
-        if (password.length < 6) {
-          throw { code: "auth/weak-password", message: "Password must be at least 6 characters long." };
-        }
-
-        const cleanName = cleanEmail.split("@")[0];
-        const loggedUser = {
-          id: "mock_user_" + cleanName,
-          uid: "mock_user_" + cleanName,
-          name: cleanName.charAt(0).toUpperCase() + cleanName.slice(1),
-          username: cleanName,
-          email: cleanEmail,
-          avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${cleanName}`,
-          points: 450,
-          league: "Adventurer",
-          isAdmin: false,
-          bio: "Passionate traveler exploring with Laga Tour.",
-          followers: 120,
-          following: 80,
-          stats: { trips: 3, saved: 8, cities: 4 }
-        };
-
-        setCurrentUser(loggedUser);
-        localStorage.setItem("ts_current_user", JSON.stringify(loggedUser));
-        return loggedUser;
-      }
-    } finally {
-      setLoading(false);
+      const adminUser = {
+        id: matchedAdmin.id,
+        user_id: matchedAdmin.id,
+        name: matchedAdmin.role || "Administrator",
+        email: matchedAdmin.handle,
+        username: matchedAdmin.handle.split("@")[0],
+        avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${matchedAdmin.handle}`,
+        points: 9999,
+        league: "Legend",
+        isAdmin: true,
+        stats: { trips: 50, saved: 20, cities: 10 }
+      };
+      setCurrentUser(adminUser);
+      localStorage.setItem("ts_current_user", JSON.stringify(adminUser));
+      return adminUser;
     }
+
+    // 2. Authenticate against MySQL backend
+    const res = await api.login(email, password);
+    if (res && res.user) {
+      const userWithAdmin = {
+        ...res.user,
+        isAdmin: checkIsAdmin(res.user.email) || res.user.isAdmin
+      };
+      setCurrentUser(userWithAdmin);
+      localStorage.setItem("ts_current_user", JSON.stringify(userWithAdmin));
+      return userWithAdmin;
+    }
+
+    throw new Error(res?.message || "Invalid credentials.");
   }
 
-  // Google Login action
-  async function loginWithGoogle() {
-    setLoading(true);
-    try {
-      if (isFirebaseConfigured && auth) {
-        const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        const user = result.user;
-
-        const savedPoints = localStorage.getItem(`pts_${user.uid}`) || "250";
-        const pts = parseInt(savedPoints, 10);
-        const league = calculateLeague(pts);
-        const isAdminUser = checkIsAdmin(user.email);
-
-        const googleUser = {
-          id: user.uid,
-          uid: user.uid,
-          name: user.displayName || "Google Traveler",
-          username: user.email ? user.email.split("@")[0] : "traveler",
-          email: user.email,
-          avatar: user.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.uid}`,
-          points: pts,
-          league: league,
-          isAdmin: isAdminUser,
-          bio: "Exploring the world with Laga Tour!",
-          followers: 0,
-          following: 0,
-          stats: { trips: 0, saved: 0, cities: 0 }
-        };
-        setCurrentUser(googleUser);
-        return googleUser;
-      } else {
-        const mockUid = "google_mock_" + Math.random().toString(36).substr(2, 9);
-        const googleUser = {
-          id: mockUid,
-          uid: mockUid,
-          name: "Google Traveler (Demo)",
-          username: "google_traveler",
-          email: "google.traveler@gmail.com",
-          avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=google_demo",
-          points: 500,
-          league: "Adventurer",
-          isAdmin: false,
-          bio: "Google signed-in demo user.",
-          followers: 12,
-          following: 15,
-          stats: { trips: 2, saved: 5, cities: 3 }
-        };
-        setCurrentUser(googleUser);
-        localStorage.setItem("ts_current_user", JSON.stringify(googleUser));
-        return googleUser;
-      }
-    } finally {
-      setLoading(false);
-    }
+  /**
+   * Reset Password using Node.js backend and verified OTP
+   */
+  async function resetPassword(email, code, newPassword) {
+    return await api.forgotPassword(email, code, newPassword);
   }
 
-  // Add new Admin (Admin Delegation with handle, password, & metadata)
-  function addAdminAccount(adminHandle, adminPassword, addedByHandle) {
-    let cleanHandle = (adminHandle || "").trim().toLowerCase();
-    const cleanPass = (adminPassword || "").trim();
+  /**
+   * Update Profile in MySQL and local state (immediate synchronization)
+   */
+  async function updateUserProfile(profileData) {
+    if (!currentUser) throw new Error("No user logged in.");
 
-    if (!cleanHandle) {
-      throw new Error("Admin handle/email is required.");
+    const payload = {
+      userId: currentUser.id || currentUser.user_id,
+      ...profileData
+    };
+
+    const res = await api.updateProfile(payload);
+    if (res && res.user) {
+      const updated = {
+        ...currentUser,
+        ...res.user,
+        name: [res.user.firstName, res.user.lastName].filter(Boolean).join(" ") || res.user.name || currentUser.name,
+        avatar: res.user.avatar || res.user.profilePictureUrl || currentUser.avatar,
+        isAdmin: currentUser.isAdmin
+      };
+      setCurrentUser(updated);
+      localStorage.setItem("ts_current_user", JSON.stringify(updated));
+      return updated;
     }
-    if (!cleanHandle.includes("@")) {
-      cleanHandle = `${cleanHandle}@laga.tour`;
-    }
+    
+    // Optimistic fallback
+    const updated = { 
+      ...currentUser, 
+      ...profileData,
+      avatar: profileData.profilePictureUrl || currentUser.avatar,
+      name: [profileData.firstName || currentUser.firstName, profileData.lastName || currentUser.lastName].filter(Boolean).join(" ") || currentUser.name
+    };
+    setCurrentUser(updated);
+    localStorage.setItem("ts_current_user", JSON.stringify(updated));
+    return updated;
+  }
+
+  /**
+   * Logout user
+   */
+  function logout() {
+    setCurrentUser(null);
+    localStorage.removeItem("ts_current_user");
+    localStorage.removeItem("ts_login_mode");
+  }
+
+  /**
+   * Add League Points
+   */
+  function addPoints(amount) {
+    if (!currentUser) return null;
+    const oldLeague = currentUser.league || calculateLeague(currentUser.points || 0);
+    const newPoints = (currentUser.points || 0) + amount;
+    const newLeague = calculateLeague(newPoints);
+    const leveledUp = newLeague !== oldLeague;
+
+    const updated = {
+      ...currentUser,
+      points: newPoints,
+      league: newLeague
+    };
+
+    setCurrentUser(updated);
+    localStorage.setItem("ts_current_user", JSON.stringify(updated));
+
+    // Save to MySQL in background
+    api.updateProfile({ userId: currentUser.id || currentUser.user_id, points: newPoints }).catch(() => {});
+
+    return { points: newPoints, league: newLeague, leveledUp };
+  }
+
+  // Admin Management Actions
+  function addAdminAccount(handle, password, addedBy = "admin@laga.tour") {
+    const cleanHandle = handle.toLowerCase().trim();
     if (!cleanHandle.startsWith("admin")) {
-      throw new Error("Admin handle must begin with 'admin' (e.g. admin@laga.tour, admin.sarah@laga.tour, admin_sarah).");
-    }
-    if (!cleanPass || cleanPass.length < 4) {
-      throw new Error("Admin password must be at least 4 characters long.");
+      throw new Error("Admin identifier must start with the prefix 'admin' (e.g. admin.sarah@laga.tour).");
     }
     if (adminAccounts.some(a => a.handle.toLowerCase() === cleanHandle)) {
-      throw new Error(`Admin account for '${cleanHandle}' is already registered.`);
+      throw new Error(`Administrator handle '${cleanHandle}' already exists.`);
     }
 
     const now = new Date();
-    const formattedDate = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " at " + now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    const formattedDate = now.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) + " at " + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     const newAdmin = {
-      id: "admin_" + Math.random().toString(36).substr(2, 9),
+      id: "admin_" + Date.now(),
       handle: cleanHandle,
-      password: cleanPass,
+      password: password || "admin",
       status: "Active",
       addedAt: formattedDate,
-      addedBy: addedByHandle || currentUser?.email || "admin@laga.tour",
-      role: "Platform Administrator"
+      addedBy: addedBy,
+      role: "System Moderator"
     };
 
     const updated = [...adminAccounts, newAdmin];
@@ -431,90 +311,26 @@ export function AuthProvider({ children }) {
     return newAdmin;
   }
 
-  // Toggle Block / Unblock Admin Account
   function toggleBlockAdminAccount(handle) {
-    const clean = (handle || "").toLowerCase().trim();
-    const updated = adminAccounts.map(a => {
-      if (a.handle.toLowerCase() === clean) {
-        return {
-          ...a,
-          status: a.status === "Blocked" ? "Active" : "Blocked"
-        };
+    const updated = adminAccounts.map(admin => {
+      if (admin.handle.toLowerCase() === handle.toLowerCase()) {
+        const nextStatus = admin.status === "Active" ? "Blocked" : "Active";
+        return { ...admin, status: nextStatus };
       }
-      return a;
+      return admin;
     });
-
     setAdminAccounts(updated);
     localStorage.setItem("ts_admin_accounts", JSON.stringify(updated));
-
-    // If current logged-in admin was blocked, kick them out
-    if (currentUser?.email?.toLowerCase() === clean) {
-      const currentMatched = updated.find(a => a.handle.toLowerCase() === clean);
-      if (currentMatched?.status === "Blocked") {
-        logout();
-      }
-    }
-    return updated;
   }
 
-  // Reset Password action
-  async function resetPassword(email) {
-    if (isFirebaseConfigured && auth) {
-      return await sendPasswordResetEmail(auth, email);
-    } else {
-      return true;
-    }
-  }
-
-  // Logout action
-  async function logout() {
-    setLoading(true);
-    try {
-      if (isFirebaseConfigured && auth) {
-        await signOut(auth);
-      } else {
-        localStorage.removeItem("ts_current_user");
-        setCurrentUser(null);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Add Points (Traveler Score & League System)
-  function addPoints(amount) {
-    if (!currentUser) return;
-    
-    const newPoints = currentUser.points + amount;
-    const newLeague = calculateLeague(newPoints);
-    const updatedUser = {
-      ...currentUser,
-      points: newPoints,
-      league: newLeague
-    };
-
-    setCurrentUser(updatedUser);
-    
-    if (isFirebaseConfigured) {
-      localStorage.setItem(`pts_${currentUser.id}`, newPoints.toString());
-    } else {
-      localStorage.setItem("ts_current_user", JSON.stringify(updatedUser));
-    }
-    
-    return { points: newPoints, league: newLeague, leveledUp: newLeague !== currentUser.league };
-  }
-
-  // Admin Features
-  function sendPushNotification(title, message, priority = "info") {
-    const now = new Date();
+  function sendPushNotification(title, message, target = "all") {
     const newNotif = {
-      id: "admin_notif_" + Math.random().toString(36).substr(2, 9),
+      id: "notif_" + Date.now(),
       title,
       message,
-      priority, // 'info' | 'warning' | 'error' | 'success'
-      timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      unread: true,
-      isAdminPush: true
+      target,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ", " + new Date().toLocaleDateString([], { month: 'short', day: 'numeric' }),
+      read: false
     };
     const updated = [newNotif, ...globalNotifications];
     setGlobalNotifications(updated);
@@ -540,18 +356,21 @@ export function AuthProvider({ children }) {
   const value = {
     currentUser,
     loading,
-    isMockAuth,
     adminAccounts,
     globalNotifications,
     globalBanner,
+    sendVerificationCode,
+    sendVerification: sendVerificationCode,
+    verifyCode,
     signup,
     login,
-    loginWithGoogle,
-    addAdminAccount,
-    toggleBlockAdminAccount,
     resetPassword,
+    updateUserProfile,
+    refreshProfile,
     logout,
     addPoints,
+    addAdminAccount,
+    toggleBlockAdminAccount,
     sendPushNotification,
     clearPushNotifications,
     setGlobalBannerAlert,
@@ -560,7 +379,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 }
