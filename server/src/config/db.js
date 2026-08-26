@@ -79,6 +79,14 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    // Ensure profile_picture_url and media_url support large base64 images
+    try {
+      await p.query("ALTER TABLE `users` MODIFY `profile_picture_url` LONGTEXT NULL;");
+      await p.query("ALTER TABLE `post_media` MODIFY `media_url` LONGTEXT NULL;");
+    } catch (colErr) {
+      // Ignored if already longtext
+    }
+
     // Ensure password_hash column exists if table existed previously without it
     const [pwdCol] = await p.query("SHOW COLUMNS FROM users LIKE 'password_hash'");
     if (pwdCol.length === 0) {
@@ -220,31 +228,22 @@ async function seedInitialData(p) {
   const defaultPasswordHash = await bcrypt.hash("password", 10);
   const adminPasswordHash = await bcrypt.hash("admin", 10);
 
-  // Check if users exist or update password_hash on seed users
-  const [usersCount] = await p.query("SELECT COUNT(*) as count FROM users");
-  if (usersCount[0].count === 0) {
-    console.log("🌱 Seeding initial users into lagatour_db with hashed passwords...");
-    const sampleUsers = [
-      ["user_1", "aria@laga.tour", defaultPasswordHash, "aria_travels", "Aria", "Jahan", "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", "Adventure seeker. Mapping the world one coffee at a time ☕🏕️", "Bangladesh", "Dhaka", "+8801700000001", "Solo", 2450, 1240, 480],
-      ["user_2", "nabil@laga.tour", defaultPasswordHash, "nabil_wanderer", "Nabil", "Ahmed", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150", "Full-time explorer, photographer, and budget backpacker. 📸🏔️", "Bangladesh", "Chittagong", "+8801800000002", "Friends", 4800, 5300, 340],
-      ["user_3", "sadia@laga.tour", defaultPasswordHash, "sadia_expeditions", "Sadia", "Rahman", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150", "Nature lover & weekend trekker. 🎒🌲", "Bangladesh", "Sylhet", "+8801900000003", "Group", 850, 320, 190],
-      ["user_4", "rashed@laga.tour", defaultPasswordHash, "rashed_backpacks", "Rashed", "Karim", "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=150", "Novice traveler. Dreaming of St. Martin's 🌊⛵", "Bangladesh", "Dhaka", "+8801600000004", "Family", 120, 45, 110],
-      ["admin_root", "admin@laga.tour", adminPasswordHash, "admin_root", "System", "Admin", "https://api.dicebear.com/7.x/adventurer/svg?seed=admin", "LagaTour System Administrator", "Bangladesh", "Dhaka", "+8801500000000", "Solo", 9999, 10000, 50]
-    ];
+  // Guarantee seed users exist in MySQL database
+  const sampleUsers = [
+    ["user_1", "aria@laga.tour", defaultPasswordHash, "aria_travels", "Aria", "Jahan", "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", "Adventure seeker. Mapping the world one coffee at a time ☕🏕️", "Bangladesh", "Dhaka", "+8801700000001", "Solo", 2450, 1240, 480],
+    ["user_2", "nabil@laga.tour", defaultPasswordHash, "nabil_wanderer", "Nabil", "Ahmed", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150", "Full-time explorer, photographer, and budget backpacker. 📸🏔️", "Bangladesh", "Chittagong", "+8801800000002", "Friends", 4800, 5300, 340],
+    ["user_3", "sadia@laga.tour", defaultPasswordHash, "sadia_expeditions", "Sadia", "Rahman", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150", "Nature lover & weekend trekker. 🎒🌲", "Bangladesh", "Sylhet", "+8801900000003", "Group", 850, 320, 190],
+    ["user_4", "rashed@laga.tour", defaultPasswordHash, "rashed_backpacks", "Rashed", "Karim", "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=150", "Novice traveler. Dreaming of St. Martin's 🌊⛵", "Bangladesh", "Dhaka", "+8801600000004", "Family", 120, 45, 110],
+    ["admin_root", "admin@laga.tour", adminPasswordHash, "admin_root", "System", "Admin", "https://api.dicebear.com/7.x/adventurer/svg?seed=admin", "LagaTour System Administrator", "Bangladesh", "Dhaka", "+8801500000000", "Solo", 9999, 10000, 50]
+  ];
 
-    for (const u of sampleUsers) {
-      await p.query(`
-        INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE 
-          password_hash=VALUES(password_hash),
-          username=VALUES(username)
-      `, u);
-    }
-  } else {
-    // Ensure existing seed users have password hashes populated if they were created before password_hash was added
-    await p.query(`UPDATE users SET password_hash = ? WHERE password_hash IS NULL AND user_id != 'admin_root'`, [defaultPasswordHash]);
-    await p.query(`UPDATE users SET password_hash = ? WHERE user_id = 'admin_root' AND (password_hash IS NULL OR password_hash = '')`, [adminPasswordHash]);
+  for (const u of sampleUsers) {
+    await p.query(`
+      INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE 
+        password_hash = COALESCE(users.password_hash, VALUES(password_hash))
+    `, u);
   }
 
   // Check if posts exist

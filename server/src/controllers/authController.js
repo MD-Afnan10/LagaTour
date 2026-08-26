@@ -350,16 +350,51 @@ export async function updateProfile(req, res) {
       userId,
       firstName,
       lastName,
+      name,
       bio,
       country,
       city,
       phone,
       preferredTravelType,
-      profilePictureUrl
+      profilePictureUrl,
+      points,
+      leaguePoints,
+      league_points
     } = req.body;
 
     if (!userId) {
       return res.status(400).json({ success: false, message: "User ID is required." });
+    }
+
+    // Ensure the user exists in MySQL before updating
+    const [existing] = await query("SELECT user_id, first_name, last_name, username, email FROM users WHERE user_id = ?", [userId]);
+    if (!existing) {
+      const parsedFirst = firstName || (name ? name.split(" ")[0] : "Traveler");
+      const parsedLast = lastName || (name ? name.split(" ").slice(1).join(" ") : "");
+      const username = userId.startsWith("user_") ? `traveler_${userId.slice(-4)}` : userId;
+      const email = `${username}@laga.tour`;
+      const pts = points || leaguePoints || league_points || 350;
+
+      await query(`
+        INSERT INTO users (user_id, email, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE 
+          first_name = COALESCE(VALUES(first_name), users.first_name),
+          last_name = COALESCE(VALUES(last_name), users.last_name)
+      `, [
+        userId,
+        email,
+        username,
+        parsedFirst,
+        parsedLast,
+        profilePictureUrl || `https://api.dicebear.com/7.x/adventurer/svg?seed=${username}`,
+        bio || "",
+        country || "Bangladesh",
+        city || "Dhaka",
+        phone || "",
+        preferredTravelType || "Solo",
+        pts
+      ]);
     }
 
     const updates = [];
@@ -396,6 +431,11 @@ export async function updateProfile(req, res) {
     if (profilePictureUrl !== undefined) {
       updates.push("profile_picture_url = ?");
       values.push(profilePictureUrl);
+    }
+    const finalPts = points || leaguePoints || league_points;
+    if (finalPts !== undefined) {
+      updates.push("league_points = ?");
+      values.push(parseInt(finalPts, 10));
     }
 
     if (updates.length > 0) {

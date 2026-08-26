@@ -55,7 +55,20 @@ export default function UserProfile() {
     currentUser.username?.toLowerCase() === userId?.toLowerCase()
   );
 
+  const [dbUser, setDbUser] = useState(null);
+
+  React.useEffect(() => {
+    if (userId && !isSelf) {
+      api.getUserProfile(userId).then(res => {
+        if (res && res.user) {
+          setDbUser(res.user);
+        }
+      }).catch(() => {});
+    }
+  }, [userId, isSelf]);
+
   const matchedUser = isSelf ? currentUser : (
+    dbUser || 
     MOCK_USERS.find(u => u.id === userId || u.username.toLowerCase() === userId?.toLowerCase()) || 
     (currentUser || MOCK_USERS[0])
   );
