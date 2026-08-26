@@ -16,16 +16,20 @@ import {
   User, 
   Sun, 
   Moon,
-  Trophy
+  Trophy,
+  PlusCircle
 } from "lucide-react";
 
 export default function Navbar() {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, logout, globalNotifications = [], clearPushNotifications } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   
-  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+  const [localNotifications, setLocalNotifications] = useState(MOCK_NOTIFICATIONS);
   const [theme, setTheme] = useState(localStorage.getItem("ts_theme") || "sunset");
+
+  // Merge global push notifications and local notifications
+  const allNotifications = [...globalNotifications, ...localNotifications];
 
   // Sync DaisyUI theme attribute
   useEffect(() => {
@@ -47,14 +51,20 @@ export default function Navbar() {
   };
 
   const markAllRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+    setLocalNotifications(prev => prev.map(n => ({ ...n, unread: false })));
+    clearPushNotifications();
   };
 
   const handleNotificationClick = (id) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: false } : n));
+    // Check if it's a local mock notification
+    setLocalNotifications(prev => prev.map(n => n.id === id ? { ...n, unread: false } : n));
+    // For global notifications, marking read just clears them for now
+    if (id.startsWith("admin_notif_")) {
+       clearPushNotifications();
+    }
   };
 
-  const unreadCount = notifications.filter(n => n.unread).length;
+  const unreadCount = allNotifications.filter(n => n.unread).length;
 
   const isActive = (path) => {
     return location.pathname === path ? "btn-primary text-primary-content" : "btn-ghost";
@@ -86,6 +96,7 @@ export default function Navbar() {
             {currentUser && (
               <>
                 <li><Link to="/"><Compass className="w-4 h-4" /> Social Feed</Link></li>
+                <li><Link to="/create-post"><PlusCircle className="w-4 h-4 text-primary" /> Create Post</Link></li>
                 <li><Link to="/map"><MapPin className="w-4 h-4" /> Map Explorer</Link></li>
                 <li><Link to="/places"><Landmark className="w-4 h-4" /> Places</Link></li>
                 <li><Link to="/plans"><Map className="w-4 h-4" /> Tour Plans</Link></li>
@@ -94,8 +105,18 @@ export default function Navbar() {
                 <li><Link to="/chats"><MessageSquare className="w-4 h-4" /> Messages</Link></li>
                 <li><Link to="/ai-builder"><Sparkles className="w-4 h-4 text-warning" /> AI Builder</Link></li>
                 <li><Link to="/dashboard"><User className="w-4 h-4" /> Dashboard</Link></li>
-                {currentUser.username === "nabil_wanderer" && (
-                  <li><Link to="/admin"><ShieldAlert className="w-4 h-4 text-error" /> Admin Panel</Link></li>
+                {(currentUser?.isAdmin || currentUser?.email?.toLowerCase().startsWith("admin@")) && (
+                  <li>
+                    <button 
+                      onClick={() => {
+                        localStorage.setItem("ts_login_mode", "admin");
+                        navigate("/admin");
+                      }} 
+                      className="text-error"
+                    >
+                      <ShieldAlert className="w-4 h-4 text-error" /> Admin Panel
+                    </button>
+                  </li>
                 )}
               </>
             )}
@@ -184,20 +205,26 @@ export default function Navbar() {
                     )}
                   </div>
                   <div className="max-h-60 overflow-y-auto flex flex-col gap-2">
-                    {notifications.length === 0 ? (
+                    {allNotifications.length === 0 ? (
                       <div className="text-center py-4 text-base-content/50">No notifications</div>
                     ) : (
-                      notifications.map(n => (
+                      allNotifications.map(n => (
                         <div 
                           key={n.id} 
                           onClick={() => handleNotificationClick(n.id)}
-                          className={`flex items-start gap-2 p-2 rounded-lg hover:bg-base-300 transition-colors cursor-pointer ${n.unread ? 'bg-base-300/40 border-l-4 border-primary' : ''}`}
+                          className={`flex items-start gap-2 p-2 rounded-lg hover:bg-base-300 transition-colors cursor-pointer ${n.unread ? 'bg-base-300/40 border-l-4 border-primary' : ''} ${n.isAdminPush ? 'border-l-4 border-error bg-error/10' : ''}`}
                         >
-                          <img src={n.user?.avatar} alt={n.user?.name} className="w-8 h-8 rounded-full object-cover" />
+                          {n.isAdminPush ? (
+                            <div className="w-8 h-8 rounded-full bg-error/20 flex items-center justify-center shrink-0">
+                              <ShieldAlert className="w-4 h-4 text-error" />
+                            </div>
+                          ) : (
+                            <img src={n.user?.avatar} alt={n.user?.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                          )}
                           <div className="flex-1">
-                            <p className="text-xs font-semibold">{n.title}</p>
-                            <p className="text-[10px] text-base-content/70 italic mt-0.5 truncate">{n.body}</p>
-                            <span className="text-[9px] text-base-content/50 mt-1 block">{n.time}</span>
+                            <p className={`text-xs font-semibold ${n.isAdminPush ? 'text-error' : ''}`}>{n.title}</p>
+                            <p className="text-[10px] text-base-content/70 italic mt-0.5 break-words whitespace-pre-wrap">{n.message || n.body}</p>
+                            <span className="text-[9px] text-base-content/50 mt-1 block">{n.timestamp || n.time}</span>
                           </div>
                         </div>
                       ))
@@ -221,8 +248,18 @@ export default function Navbar() {
               </div>
               <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[100] p-2 shadow bg-base-200 rounded-box w-52 border border-base-300">
                 <li><Link to="/dashboard"><User className="w-4 h-4" /> My Profile</Link></li>
-                {currentUser.username === "nabil_wanderer" && (
-                  <li><Link to="/admin"><ShieldAlert className="w-4 h-4 text-error" /> Admin Panel</Link></li>
+                {(currentUser?.isAdmin || currentUser?.email?.toLowerCase().startsWith("admin@")) && (
+                  <li>
+                    <button 
+                      onClick={() => {
+                        localStorage.setItem("ts_login_mode", "admin");
+                        navigate("/admin");
+                      }} 
+                      className="text-error"
+                    >
+                      <ShieldAlert className="w-4 h-4 text-error" /> Admin Panel
+                    </button>
+                  </li>
                 )}
                 <div className="divider my-1"></div>
                 <li><button onClick={handleLogout} className="text-error"><LogOut className="w-4 h-4" /> Logout</button></li>

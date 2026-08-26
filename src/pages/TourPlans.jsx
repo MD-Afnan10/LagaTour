@@ -27,6 +27,21 @@ import confetti from "canvas-confetti";
 export default function TourPlans() {
   const { currentUser, addPoints } = useAuth();
   
+  const isAdmin = currentUser?.isAdmin || currentUser?.email?.toLowerCase().startsWith("admin");
+
+  const [hiddenPlans, setHiddenPlans] = useState(() => {
+    const saved = localStorage.getItem("ts_hidden_plans");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const toggleHidePlan = (planId) => {
+    setHiddenPlans(prev => {
+      const updated = prev.includes(planId) ? prev.filter(id => id !== planId) : [...prev, planId];
+      localStorage.setItem("ts_hidden_plans", JSON.stringify(updated));
+      return updated;
+    });
+  };
+  
   const [plans, setPlans] = useState(MOCK_TOUR_PLANS);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
@@ -283,6 +298,8 @@ export default function TourPlans() {
 
   // Filter logic
   const filteredPlans = plans.filter(p => {
+    if (!isAdmin && hiddenPlans.includes(p.id)) return false;
+
     const matchesSearch = p.destinationName.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           p.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = selectedType === "All" || p.travelType === selectedType;
@@ -408,8 +425,8 @@ export default function TourPlans() {
             </div>
           ) : (
             filteredPlans.map(plan => (
-              <div key={plan.id} className="card bg-base-100 border border-base-200 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                
+              <div key={plan.id} className={`card bg-base-100 border ${hiddenPlans.includes(plan.id) ? 'border-error shadow-error/20 opacity-80' : 'border-base-200'} shadow-sm overflow-hidden hover:shadow-md transition-shadow relative`}>
+                {hiddenPlans.includes(plan.id) && <div className="absolute top-4 left-4 z-10 badge badge-error font-black uppercase shadow-lg shadow-error/50">Hidden from Public</div>}
                 {/* Header */}
                 <div className="p-4 md:p-6 border-b border-base-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -431,6 +448,14 @@ export default function TourPlans() {
                   <div className="flex gap-2 shrink-0">
                     <span className="badge badge-primary py-3 px-3.5 font-bold rounded-lg text-xs whitespace-nowrap shrink-0">{Number(plan.totalBudget).toLocaleString()} BDT</span>
                     <span className="badge badge-accent py-3 px-3.5 font-bold rounded-lg text-xs whitespace-nowrap shrink-0">{plan.travelType}</span>
+                    {isAdmin && (
+                      <button 
+                        onClick={() => toggleHidePlan(plan.id)}
+                        className={`btn btn-xs rounded-lg font-bold border-none shadow-md ${hiddenPlans.includes(plan.id) ? 'btn-error text-white' : 'btn-warning text-slate-900'}`}
+                      >
+                        {hiddenPlans.includes(plan.id) ? 'Unhide' : 'Hide Plan'}
+                      </button>
+                    )}
                   </div>
                 </div>
 

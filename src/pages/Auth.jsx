@@ -1,16 +1,20 @@
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { MOCK_USERS } from "../data/mockData";
-import { Lock, Mail, User, ArrowLeft } from "lucide-react";
+import { Lock, Mail, User, ArrowLeft, ShieldAlert, AlertTriangle, KeyRound, X } from "lucide-react";
 
 function getFriendlyErrorMessage(err) {
   const code = err?.code || "";
   switch (code) {
     case "auth/invalid-email":
-      return "Invalid email address format.";
+      return "Invalid email address format (e.g. user@domain.com).";
+    case "auth/missing-email":
+      return "Please enter your email address or username.";
+    case "auth/missing-password":
+      return "Please enter your password.";
     case "auth/user-disabled":
-      return "This account has been disabled.";
+      return "This account has been disabled. Please contact support.";
     case "auth/user-not-found":
     case "auth/invalid-credential":
       return "Invalid email or password. Please check your credentials.";
@@ -20,6 +24,8 @@ function getFriendlyErrorMessage(err) {
       return "An account with this email address already exists.";
     case "auth/weak-password":
       return "Password must be at least 6 characters long.";
+    case "auth/admin-signup-disallowed":
+      return err?.message || "Admin accounts cannot be registered via public signup. Please contact a system administrator.";
     case "auth/popup-closed-by-user":
       return "Sign in popup was closed before completing.";
     case "auth/popup-blocked":
@@ -27,7 +33,7 @@ function getFriendlyErrorMessage(err) {
     case "auth/operation-not-allowed":
       return "Sign in provider is not enabled in your Firebase Console.";
     default:
-      return err?.message || "An authentication error occurred.";
+      return err?.message || "An authentication error occurred. Please try again.";
   }
 }
 
@@ -57,6 +63,7 @@ function GoogleIcon({ className = "w-5 h-5" }) {
 export default function Auth() {
   const { login, signup, loginWithGoogle, resetPassword, isMockAuth } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -67,6 +74,21 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  // Discreet Admin Portal state
+  const shouldAutoOpenAdmin = location.state?.openAdmin || new URLSearchParams(location.search).get("admin") === "true";
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(shouldAutoOpenAdmin);
+  const [adminEmail, setAdminEmail] = useState("admin@laga.tour");
+  const [adminPassword, setAdminPassword] = useState("admin");
+  const [adminError, setAdminError] = useState("");
+  const [adminLoading, setAdminLoading] = useState(false);
+
+  useEffect(() => {
+    if (shouldAutoOpenAdmin) {
+      setIsAdminModalOpen(true);
+    }
+  }, [shouldAutoOpenAdmin]);
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -76,15 +98,17 @@ export default function Auth() {
     try {
       if (isLogin) {
         await login(email, password);
+        localStorage.setItem("ts_login_mode", "user");
         setSuccess("Success! Logging in...");
         setTimeout(() => navigate("/"), 800);
       } else {
         if (!name) {
-          setError("Name is required");
+          setError("Full name is required");
           setLoading(false);
           return;
         }
         await signup(email, password, name);
+        localStorage.setItem("ts_login_mode", "user");
         setSuccess("Success! Account created.");
         setTimeout(() => navigate("/"), 800);
       }
@@ -95,12 +119,47 @@ export default function Auth() {
     }
   };
 
+  const handleAdminSubmit = async (e) => {
+    e.preventDefault();
+    setAdminError("");
+    setAdminLoading(true);
+
+    try {
+      await login(adminEmail, adminPassword);
+      localStorage.setItem("ts_login_mode", "admin");
+      setIsAdminModalOpen(false);
+      navigate("/admin");
+    } catch (err) {
+      setAdminError(getFriendlyErrorMessage(err));
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const handleAdminQuickLogin = async () => {
+    setAdminEmail("admin@laga.tour");
+    setAdminPassword("admin");
+    setAdminError("");
+    setAdminLoading(true);
+    try {
+      await login("admin@laga.tour", "admin");
+      localStorage.setItem("ts_login_mode", "admin");
+      setIsAdminModalOpen(false);
+      navigate("/admin");
+    } catch (err) {
+      setAdminError(getFriendlyErrorMessage(err));
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setError("");
     setSuccess("");
     setGoogleLoading(true);
     try {
       await loginWithGoogle();
+      localStorage.setItem("ts_login_mode", "user");
       setSuccess("Success! Signed in with Google.");
       setTimeout(() => navigate("/"), 800);
     } catch (err) {
@@ -133,24 +192,25 @@ export default function Auth() {
     setLoading(true);
     try {
       await login(mockUser.username, "password");
+      localStorage.setItem("ts_login_mode", "user");
       setSuccess(`Logging in as ${mockUser.name}...`);
       setTimeout(() => navigate("/"), 800);
     } catch (err) {
-      setError("Failed mock login");
+      setError(getFriendlyErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-slate-950 text-slate-100 relative overflow-hidden font-sans">
+    <div className="min-h-screen flex flex-col items-center justify-between p-4 md:p-8 bg-slate-950 text-slate-100 relative overflow-hidden font-sans">
       
       {/* Soft aesthetic background glows */}
       <div className="absolute top-[-20%] left-[20%] w-[50%] h-[50%] bg-amber-500/5 rounded-full blur-[100px]" />
       <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/5 rounded-full blur-[100px]" />
 
       {/* Return to Landing link */}
-      <div className="absolute top-6 left-6 z-20">
+      <div className="w-full max-w-5xl flex justify-start z-20 pt-2">
         <Link 
           to="/welcome" 
           className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors font-bold uppercase tracking-wider"
@@ -160,7 +220,7 @@ export default function Auth() {
       </div>
 
       {/* Centered Auth Card */}
-      <div className="w-full max-w-md bg-slate-900/60 backdrop-blur-md border border-slate-800 p-8 md:p-10 rounded-3xl shadow-2xl relative z-10 space-y-6">
+      <div className={`w-full max-w-md bg-slate-900/70 backdrop-blur-md border border-slate-800 p-8 md:p-10 rounded-3xl shadow-2xl relative z-10 space-y-6 my-auto ${error ? 'animate-shake' : ''}`}>
         
         {/* Brand Logo & Heading */}
         <div className="text-center space-y-3">
@@ -178,12 +238,18 @@ export default function Auth() {
           </div>
         </div>
 
+        {/* Dynamic Error Feedback Banner */}
         {error && (
-          <div className="alert alert-error bg-rose-500/10 border-rose-500/20 text-rose-400 text-xs py-2.5 px-3 rounded-xl">
-            <span>{error}</span>
+          <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs py-3 px-3.5 rounded-2xl flex items-start gap-2.5 shadow-sm animate-fadeIn">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <div className="leading-snug">
+              <span className="font-bold block text-rose-200 text-[11px] uppercase tracking-wider mb-0.5">Authentication Failure</span>
+              <span>{error}</span>
+            </div>
           </div>
         )}
 
+        {/* Success Banner */}
         {success && (
           <div className="alert alert-success bg-emerald-500/10 border-emerald-500/20 text-emerald-400 text-xs py-2.5 px-3 rounded-xl">
             <span>{success}</span>
@@ -200,9 +266,12 @@ export default function Auth() {
                 <input 
                   type="text" 
                   placeholder="John Doe" 
-                  className="input input-sm h-11 bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-600 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs" 
+                  className={`input input-sm h-11 bg-slate-950 border ${error && !name ? 'border-rose-500 focus:border-rose-500' : 'border-slate-800 focus:border-amber-400'} text-slate-100 placeholder-slate-600 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs transition-colors`} 
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (error) setError("");
+                  }}
                   required
                 />
               </div>
@@ -216,9 +285,12 @@ export default function Auth() {
               <input 
                 type="email" 
                 placeholder="traveler@laga.tour" 
-                className="input input-sm h-11 bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-600 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs" 
+                className={`input input-sm h-11 bg-slate-950 border ${error ? 'border-rose-500/80 focus:border-rose-500' : 'border-slate-800 focus:border-amber-400'} text-slate-100 placeholder-slate-600 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs transition-colors`} 
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (error) setError("");
+                }}
                 required
               />
             </div>
@@ -242,9 +314,12 @@ export default function Auth() {
               <input 
                 type="password" 
                 placeholder="••••••••" 
-                className="input input-sm h-11 bg-slate-950 border-slate-800 text-slate-100 placeholder-slate-600 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs" 
+                className={`input input-sm h-11 bg-slate-950 border ${error ? 'border-rose-500/80 focus:border-rose-500' : 'border-slate-800 focus:border-amber-400'} text-slate-100 placeholder-slate-600 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs transition-colors`} 
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError("");
+                }}
                 required
               />
             </div>
@@ -280,7 +355,7 @@ export default function Auth() {
 
         {/* Quick Logins for Testing */}
         <div className="pt-2">
-          <div className="text-[10px] text-slate-500 text-center mb-2 font-medium">Quick Demo Profiles:</div>
+          <div className="text-[10px] text-slate-500 text-center mb-2 font-medium">Quick Demo Traveler Profiles:</div>
           <div className="grid grid-cols-2 gap-2">
             {MOCK_USERS.slice(0, 2).map((mu) => (
               <button 
@@ -320,6 +395,110 @@ export default function Auth() {
         )}
 
       </div>
+
+      {/* Footer with Discreet Admin Access Link */}
+      <footer className="w-full text-center py-4 z-20">
+        <button
+          onClick={() => {
+            setAdminError("");
+            setIsAdminModalOpen(true);
+          }}
+          className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors font-medium flex items-center justify-center gap-1.5 mx-auto hover:underline"
+        >
+          <ShieldAlert className="w-3.5 h-3.5 text-slate-500" />
+          <span>Staff & Admin Access 🔒</span>
+        </button>
+      </footer>
+
+      {/* Discreet Admin Login Modal */}
+      {isAdminModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className={`w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl space-y-5 relative ${adminError ? 'animate-shake' : ''}`}>
+            
+            <button 
+              onClick={() => setIsAdminModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                <KeyRound className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-white">System Administrator Portal</h3>
+              <p className="text-xs text-slate-400">
+                Restricted staff entry. Admin accounts must use the <span className="text-amber-400 font-bold">admin@</span> email prefix.
+              </p>
+            </div>
+
+            {adminError && (
+              <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs py-2.5 px-3 rounded-xl flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <span>{adminError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAdminSubmit} className="space-y-4">
+              <div className="form-control">
+                <label className="label py-0.5"><span className="label-text text-slate-300 text-xs font-semibold">Admin Email Address</span></label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-3 h-4.5 w-4.5 text-slate-500" />
+                  <input 
+                    type="email" 
+                    placeholder="admin@laga.tour" 
+                    className="input input-sm h-11 bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs" 
+                    value={adminEmail}
+                    onChange={(e) => {
+                      setAdminEmail(e.target.value);
+                      if (adminError) setAdminError("");
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-control">
+                <label className="label py-0.5"><span className="label-text text-slate-300 text-xs font-semibold">Admin Passcode</span></label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-3 h-4.5 w-4.5 text-slate-500" />
+                  <input 
+                    type="password" 
+                    placeholder="••••••••" 
+                    className="input input-sm h-11 bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs" 
+                    value={adminPassword}
+                    onChange={(e) => {
+                      setAdminPassword(e.target.value);
+                      if (adminError) setAdminError("");
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={adminLoading}
+                className="btn btn-warning text-slate-950 font-bold border-none rounded-xl w-full h-11 min-h-0 text-xs capitalize shadow-lg shadow-amber-500/10 mt-2"
+              >
+                {adminLoading ? <span className="loading loading-spinner text-slate-950"></span> : "Sign In to Admin Panel"}
+              </button>
+            </form>
+
+            <div className="pt-2 text-center border-t border-slate-800">
+              <span className="text-[10px] text-slate-500 block mb-2 font-medium">Demo Administrator Sign-In:</span>
+              <button 
+                onClick={handleAdminQuickLogin}
+                className="btn btn-xs btn-outline border-slate-700 text-amber-400 hover:bg-slate-800 rounded-lg text-[10px] capitalize w-full"
+              >
+                Quick Admin Login (admin@laga.tour)
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
