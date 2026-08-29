@@ -279,7 +279,67 @@ export const api = {
       method: "DELETE"
     });
     return await handleResponse(res);
+  },
+
+  // ===================== CHAT & MESSAGING =====================
+
+  /**
+   * Fetch all conversations for a user
+   */
+  async fetchUserConversations(userId) {
+    const res = await fetch(`${API_BASE_URL}/chats?userId=${encodeURIComponent(userId)}`);
+    const data = await handleResponse(res);
+    return data.chats || [];
+  },
+
+  /**
+   * Fetch message history for a conversation
+   */
+  async fetchChatMessages(conversationId) {
+    const res = await fetch(`${API_BASE_URL}/chats/${encodeURIComponent(conversationId)}/messages`);
+    const data = await handleResponse(res);
+    return data.messages || [];
+  },
+
+  /**
+   * Get or create 1-on-1 direct chat
+   */
+  async getOrCreateDirectChat(userId1, userId2) {
+    const res = await fetch(`${API_BASE_URL}/chats/direct`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId1, userId2 })
+    });
+    const data = await handleResponse(res);
+    return data.chat;
+  },
+
+  /**
+   * Create a new group chat
+   */
+  async createGroupChat(groupData) {
+    const res = await fetch(`${API_BASE_URL}/chats/group`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(groupData)
+    });
+    const data = await handleResponse(res);
+    return data.chat;
+  },
+
+  /**
+   * Send a message to a conversation
+   */
+  async sendChatMessage(conversationId, messageData) {
+    const res = await fetch(`${API_BASE_URL}/chats/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(messageData)
+    });
+    const data = await handleResponse(res);
+    return data.message;
   }
 };
 
 export default api;
+

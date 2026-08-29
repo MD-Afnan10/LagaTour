@@ -99,7 +99,7 @@ export default function UserProfile() {
   };
 
   const handleSendMessage = () => {
-    navigate("/chats");
+    navigate("/chats", { state: { targetUser: matchedUser } });
   };
 
   // Handle Save Profile
