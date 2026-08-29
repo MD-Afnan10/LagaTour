@@ -1,12 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { usePosts } from "../context/PostContext";
 import { MOCK_TOUR_PLANS } from "../data/mockData";
 import { getLeagueProgress } from "../utils/leagueHelper";
+import api from "../services/api";
 import EditProfileModal from "../components/modals/EditProfileModal";
 import EditPostModal from "../components/modals/EditPostModal";
 import DeletePostModal from "../components/modals/DeletePostModal";
+import EditMyPlaceModal from "../components/modals/EditMyPlaceModal";
+import AddPlaceLocationModal from "../components/modals/AddPlaceLocationModal";
 import { 
   Trophy, 
   MapPin, 
@@ -32,7 +35,9 @@ import {
   PlusCircle,
   Bookmark,
   BookmarkX,
-  ArrowRight
+  ArrowRight,
+  Navigation,
+  ShieldCheck
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -46,15 +51,64 @@ export default function Dashboard() {
   } = usePosts();
   const navigate = useNavigate();
 
-  // Active section tab: 'my_posts' | 'saved_posts' | 'plans'
+  // Active section tab: 'my_posts' | 'my_places' | 'saved_posts' | 'plans'
   const [activeTab, setActiveTab] = useState("my_posts");
   
+  // My Places State
+  const [myPlaces, setMyPlaces] = useState([]);
+  const [isLoadingMyPlaces, setIsLoadingMyPlaces] = useState(false);
+  const [editingPlace, setEditingPlace] = useState(null);
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
+
   // Modals state
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [deletingPostId, setDeletingPostId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [postActionMsg, setPostActionMsg] = useState("");
+
+  // Load My Places on mount
+  useEffect(() => {
+    const targetId = currentUser?.id || currentUser?.user_id;
+    if (targetId) {
+      setIsLoadingMyPlaces(true);
+      api.fetchUserMyPlaces(targetId).then((places) => {
+        setMyPlaces(places || []);
+      }).catch((err) => {
+        console.warn("Could not load user's My Places:", err.message);
+      }).finally(() => {
+        setIsLoadingMyPlaces(false);
+      });
+    }
+  }, [currentUser?.id, currentUser?.user_id]);
+
+  // Handle Place Actions
+  const handlePlaceAdded = (newPlace) => {
+    if (newPlace) {
+      setMyPlaces(prev => [newPlace, ...prev]);
+      setPostActionMsg("📍 Location recorded in 'My Places'!");
+      setTimeout(() => setPostActionMsg(""), 2500);
+    }
+  };
+
+  const handlePlaceSaved = (updatedPlace) => {
+    setMyPlaces(prev => prev.map(p => (p.id === updatedPlace.id || p.place_id === updatedPlace.place_id) ? updatedPlace : p));
+    setPostActionMsg("✅ Place details saved successfully!");
+    setTimeout(() => setPostActionMsg(""), 2500);
+  };
+
+  const handleDeleteMyPlace = async (placeId) => {
+    if (!window.confirm("Are you sure you want to remove this place from 'My Places'?")) return;
+    const uId = currentUser?.id || currentUser?.user_id;
+    setMyPlaces(prev => prev.filter(p => (p.id !== placeId && p.place_id !== placeId)));
+    try {
+      await api.deleteFromMyPlaces(placeId, uId);
+      setPostActionMsg("🗑️ Place removed from 'My Places'.");
+      setTimeout(() => setPostActionMsg(""), 2500);
+    } catch (err) {
+      console.warn("Failed to delete place:", err.message);
+    }
+  };
 
   if (!currentUser) return null;
 
@@ -395,6 +449,12 @@ export default function Dashboard() {
               <Compass className="w-3.5 h-3.5" /> My Stories ({myPosts.length})
             </button>
             <button 
+              onClick={() => setActiveTab("my_places")}
+              className={`tab tab-sm font-bold capitalize gap-1.5 ${activeTab === "my_places" ? "tab-active bg-primary text-slate-900 font-black rounded-xl shadow-sm" : ""}`}
+            >
+              <Navigation className="w-3.5 h-3.5" /> 📍 My Places ({myPlaces.length})
+            </button>
+            <button 
               onClick={() => setActiveTab("saved_posts")}
               className={`tab tab-sm font-bold capitalize gap-1.5 ${activeTab === "saved_posts" ? "tab-active bg-primary text-slate-900 font-black rounded-xl shadow-sm" : ""}`}
             >
@@ -408,12 +468,21 @@ export default function Dashboard() {
             </button>
           </div>
 
-          <button 
-            onClick={() => navigate("/create-post")}
-            className="btn btn-xs btn-primary text-slate-900 font-bold rounded-xl gap-1 mr-2 shrink-0 shadow-sm"
-          >
-            <PlusCircle className="w-3.5 h-3.5" /> Share Story
-          </button>
+          <div className="flex items-center gap-1.5 mr-2 shrink-0">
+            <button 
+              onClick={() => setIsAddLocationOpen(true)}
+              className="btn btn-xs btn-primary text-slate-900 font-black rounded-xl gap-1 shadow-sm hover:scale-105 transition-transform"
+              title="Record live GPS spot"
+            >
+              <Navigation className="w-3.5 h-3.5" /> 📍 Record Spot
+            </button>
+            <button 
+              onClick={() => navigate("/create-post")}
+              className="btn btn-xs btn-outline rounded-xl gap-1 font-bold"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-primary" /> Story
+            </button>
+          </div>
         </div>
 
         {/* Tab Content Area */}
@@ -532,7 +601,134 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 2: SAVED POSTS */}
+          {/* TAB: MY PLACES */}
+          {activeTab === "my_places" && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-base-content/60">
+                  Locations and scenic spots you have discovered or saved.
+                </span>
+                <button 
+                  onClick={() => setIsAddLocationOpen(true)}
+                  className="btn btn-xs btn-primary text-slate-900 font-black rounded-xl gap-1 shadow-sm hover:scale-105 transition-transform"
+                >
+                  <Navigation className="w-3.5 h-3.5" /> 📍 Record Spot
+                </button>
+              </div>
+
+              {isLoadingMyPlaces ? (
+                <div className="text-center py-12 text-xs text-base-content/50 flex items-center justify-center gap-2">
+                  <span className="loading loading-spinner loading-sm text-primary"></span>
+                  <span>Loading recorded places...</span>
+                </div>
+              ) : myPlaces.length === 0 ? (
+                <div className="text-center py-12 text-xs text-base-content/50 border border-dashed border-base-300 rounded-2xl p-6 space-y-3">
+                  <Navigation className="w-10 h-10 mx-auto text-base-content/30" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-sm text-base-content">No places recorded in your collection yet.</p>
+                    <p className="max-w-xs mx-auto text-base-content/60">
+                      Capture live GPS coordinates when traveling, add photos, description, and share with the traveler community.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setIsAddLocationOpen(true)}
+                    className="btn btn-sm btn-primary text-slate-900 font-black rounded-xl gap-2 mt-2 shadow-md hover:scale-105 transition-transform"
+                  >
+                    <Navigation className="w-4 h-4" /> 📍 Record First Place
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {myPlaces.map((pl) => {
+                    const hasPhoto = pl.images && Array.isArray(pl.images) && pl.images.length > 0 && pl.images[0];
+                    const isPub = Boolean(pl.isPublic || pl.is_public);
+                    const isOwn = pl.isOwner === true || pl.is_owner === 1 || pl.created_by === (currentUser?.id || currentUser?.user_id) || pl.createdBy === (currentUser?.id || currentUser?.user_id);
+
+                    return (
+                      <div 
+                        key={pl.id || pl.place_id}
+                        className="card bg-base-200/60 border border-base-300 rounded-2xl p-4 space-y-3 shadow-sm hover:border-primary/40 transition-all"
+                      >
+                        <div className="flex gap-3">
+                          {hasPhoto ? (
+                            <img 
+                              src={pl.images[0]} 
+                              alt={pl.placeName || pl.name} 
+                              className="w-24 h-24 rounded-xl object-cover bg-black/20 shrink-0 border border-base-300"
+                            />
+                          ) : (
+                            <div className="w-24 h-24 rounded-xl bg-base-300/80 border border-base-300 flex flex-col items-center justify-center text-base-content/40 shrink-0">
+                              <MapPin className="w-6 h-6 text-primary/50" />
+                              <span className="text-[9px] font-bold mt-1 text-base-content/50">No photo</span>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-start justify-between gap-1">
+                              <h4 className="font-black text-sm text-base-content leading-tight line-clamp-1">
+                                {pl.placeName || pl.name}
+                              </h4>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {isPub ? (
+                                  <span className="badge badge-success text-white font-bold text-[10px] gap-0.5">
+                                    <Globe className="w-2.5 h-2.5" /> Public
+                                  </span>
+                                ) : (
+                                  <span className="badge badge-neutral font-bold text-[10px] gap-0.5">
+                                    <Lock className="w-2.5 h-2.5" /> Draft
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <p className="text-[11px] text-base-content/70 line-clamp-2 leading-relaxed">
+                              {pl.description || "No description provided yet."}
+                            </p>
+
+                            <div className="flex items-center gap-2 text-[10px] text-base-content/60 flex-wrap pt-1">
+                              <span className="bg-base-200 px-2 py-0.5 rounded-md font-semibold text-primary">
+                                📍 {pl.districtName || pl.district || "General"}, {pl.divisionName || pl.division || "BD"}
+                              </span>
+                              <span className="font-mono text-base-content/50">
+                                ({pl.latitude?.toFixed(2)}, {pl.longitude?.toFixed(2)})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Card Footer Bar */}
+                        <div className="flex items-center justify-between pt-2 border-t border-base-300 text-xs">
+                          <div className="flex items-center gap-1.5 font-bold text-amber-500 text-[11px]">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>Safety: {pl.safetyRating || pl.safety_rating || 5.0}★</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            {isOwn && (
+                              <button
+                                onClick={() => setEditingPlace(pl)}
+                                className="btn btn-xs btn-primary text-slate-900 font-bold rounded-lg gap-1"
+                              >
+                                <Edit3 className="w-3 h-3" /> Edit Details
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteMyPlace(pl.id || pl.place_id)}
+                              className="btn btn-xs btn-ghost text-error rounded-lg p-1 hover:bg-error/10"
+                              title="Remove from My Places"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: SAVED POSTS */}
           {activeTab === "saved_posts" && (
             <div className="space-y-4">
               <div className="flex justify-between items-center">
@@ -694,6 +890,21 @@ export default function Dashboard() {
         onClose={() => setDeletingPostId(null)}
         onConfirm={handleConfirmDelete}
         isDeleting={isDeleting}
+      />
+
+      <EditMyPlaceModal 
+        isOpen={Boolean(editingPlace)}
+        onClose={() => setEditingPlace(null)}
+        place={editingPlace}
+        currentUser={currentUser}
+        onSaved={handlePlaceSaved}
+      />
+
+      <AddPlaceLocationModal 
+        isOpen={isAddLocationOpen}
+        onClose={() => setIsAddLocationOpen(false)}
+        currentUser={currentUser}
+        onPlaceAdded={handlePlaceAdded}
       />
 
     </div>

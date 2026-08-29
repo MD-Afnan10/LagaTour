@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { usePosts } from "../context/PostContext";
-import { MOCK_DESTINATIONS } from "../data/mockData";
+import api from "../services/api";
 import { 
   Image as ImageIcon, 
   Video as VideoIcon, 
@@ -17,7 +17,8 @@ import {
   Upload,
   X,
   FileCheck,
-  Plus
+  Plus,
+  Navigation
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -27,8 +28,11 @@ export default function CreatePost() {
   const navigate = useNavigate();
 
   const [caption, setCaption] = useState("");
-  const [destination, setDestination] = useState(MOCK_DESTINATIONS[0]?.name || "Cox's Bazar Beach");
+  const [destination, setDestination] = useState("custom");
   const [customDestination, setCustomDestination] = useState("");
+
+  // Saved Public Places State
+  const [myPlaces, setMyPlaces] = useState([]);
 
   // Multiple Photos & Videos State
   const [photoItems, setPhotoItems] = useState([]);
@@ -38,6 +42,32 @@ export default function CreatePost() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verifyStep, setVerifyStep] = useState(0);
   const [verifyError, setVerifyError] = useState("");
+
+  // Load User's Saved Places (only public places)
+  useEffect(() => {
+    const uId = currentUser?.id || currentUser?.user_id;
+    if (uId) {
+      api.fetchUserMyPlaces(uId).then(places => {
+        const publicSavedPlaces = (places || []).filter(p => p.isPublic === true || p.is_public == 1);
+        setMyPlaces(publicSavedPlaces);
+        if (publicSavedPlaces.length > 0) {
+          const firstPlace = publicSavedPlaces[0];
+          const firstName = firstPlace.placeName || firstPlace.place_name || firstPlace.name || "";
+          if (firstName) {
+            setDestination(firstName);
+          } else {
+            setDestination("custom");
+          }
+        } else {
+          setDestination("custom");
+        }
+      }).catch(() => {
+        setDestination("custom");
+      });
+    } else {
+      setDestination("custom");
+    }
+  }, [currentUser?.id, currentUser?.user_id]);
 
   // Sample media presets
   const samplePhotos = [
@@ -52,8 +82,40 @@ export default function CreatePost() {
     { name: "Ocean Escapes Reel (MP4)", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4" }
   ];
 
+  // Helper to compress and convert image files to persistent Base64 Data URLs
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let { width, height } = img;
+          const maxDim = 1200;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        };
+        img.onerror = () => resolve(e.target.result);
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   // Handle Uploading Multiple Image Files
-  const handleMultipleImages = (e) => {
+  const handleMultipleImages = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
       const invalid = files.find(f => !f.type.startsWith("image/"));
@@ -63,13 +125,18 @@ export default function CreatePost() {
       }
       setVerifyError("");
 
-      const newPhotos = files.map((file, idx) => ({
-        id: "img_" + Date.now() + "_" + idx + "_" + Math.random().toString(36).substr(2, 4),
-        name: file.name,
-        url: URL.createObjectURL(file)
-      }));
+      const processedPhotos = await Promise.all(
+        files.map(async (file, idx) => {
+          const dataUrl = await compressImage(file);
+          return {
+            id: "img_" + Date.now() + "_" + idx + "_" + Math.random().toString(36).substr(2, 4),
+            name: file.name,
+            url: dataUrl
+          };
+        })
+      );
 
-      setPhotoItems(prev => [...prev, ...newPhotos]);
+      setPhotoItems(prev => [...prev, ...processedPhotos]);
     }
   };
 
@@ -242,25 +309,38 @@ export default function CreatePost() {
                   <MapPin className="w-4 h-4 text-primary" /> Destination / Location Tag
                 </span>
               </label>
+
               <select 
                 className="select select-bordered w-full text-xs rounded-xl h-11 bg-base-100 focus:border-primary font-medium"
                 value={destination}
-                onChange={(e) => setDestination(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDestination(val);
+                  if (val !== "custom") {
+                    setCustomDestination("");
+                  }
+                }}
               >
-                {MOCK_DESTINATIONS.map(d => (
-                  <option key={d.id} value={d.name}>{d.name} ({d.category})</option>
-                ))}
-                <option value="custom">➕ Add Custom Location...</option>
+                {myPlaces.map((p, idx) => {
+                  const placeName = p.placeName || p.place_name || p.name || `Saved Spot #${idx + 1}`;
+                  return (
+                    <option key={p.place_id || p.id || idx} value={placeName}>
+                      {placeName}
+                    </option>
+                  );
+                })}
+                <option value="custom">➕ Enter custom location...</option>
               </select>
 
               {destination === "custom" && (
                 <input 
                   type="text" 
-                  placeholder="Enter custom location name (e.g. Kuakata Sea Beach)" 
-                  className="input input-bordered w-full text-xs rounded-xl h-10 mt-2"
+                  placeholder="Enter location name (e.g. Cox's Bazar, Sajek Peak)..." 
+                  className="input input-bordered w-full text-xs rounded-xl h-10 mt-2 focus:border-primary"
                   value={customDestination}
                   onChange={(e) => setCustomDestination(e.target.value)}
                   required
+                  autoFocus
                 />
               )}
             </div>

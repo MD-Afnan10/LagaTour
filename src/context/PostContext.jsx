@@ -9,39 +9,9 @@ export function usePosts() {
   return context || {};
 }
 
-const INITIAL_REPORTS = [
-  {
-    id: "rep_1",
-    postId: "post_2",
-    post: {
-      id: "post_2",
-      author: { name: "Nabil Ahmed", username: "nabil_wanderer", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150" },
-      image: "https://images.unsplash.com/photo-1628155930542-3c7a64e2c833?w=800",
-      video: "",
-      caption: "Woke up above the clouds today in Sajek Valley. ☁️🏕️ The morning breeze and lush green mountain peaks are absolutely worth the bumpy Chander Gari ride!",
-      destination: "Sajek Valley"
-    },
-    reporter: "sadia_expeditions",
-    reason: "Contains potentially dangerous cliff trekking tips without safety warnings.",
-    timestamp: "2 hours ago",
-    status: "pending"
-  }
-];
-
 export function PostProvider({ children }) {
-  const [posts, setPosts] = useState(() => {
-    return MOCK_POSTS.map(p => ({
-      ...p,
-      video: p.video || "",
-      shares: p.shares || 0,
-      saves: p.saves || 0,
-      hasLiked: p.hasLiked || false,
-      hasSaved: p.hasSaved || false,
-      isHidden: p.isHidden || false
-    }));
-  });
-
-  const [reports, setReports] = useState(INITIAL_REPORTS);
+  const [posts, setPosts] = useState([]);
+  const [reports, setReports] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [backendActive, setBackendActive] = useState(false);
 
@@ -50,12 +20,11 @@ export function PostProvider({ children }) {
     try {
       setIsLoading(true);
       const fetchedPosts = await api.fetchPosts(userId, true);
-      if (fetchedPosts && Array.isArray(fetchedPosts) && fetchedPosts.length > 0) {
-        setPosts(fetchedPosts);
-        setBackendActive(true);
-      }
+      setPosts(Array.isArray(fetchedPosts) ? fetchedPosts : []);
+      setBackendActive(true);
     } catch (err) {
       console.warn("Could not load posts from Node.js backend:", err.message);
+      setPosts([]);
     } finally {
       setIsLoading(false);
     }

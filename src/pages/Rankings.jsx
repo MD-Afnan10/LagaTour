@@ -51,70 +51,43 @@ export default function Rankings() {
   const [planSortBy, setPlanSortBy] = useState("rating"); // 'rating', 'likes', 'budget'
   const [planSearch, setPlanSearch] = useState("");
 
-  // Expanded Mock Users list for rich leaderboard sorting
-  const extendedUsers = [
-    ...MOCK_USERS,
-    {
-      id: "user_5",
-      name: "Tanvir Hasan",
-      username: "tanvir_treks",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
-      points: 3950,
-      league: "Legend",
-      bio: "Highland climber & off-grid camper in Bandarban 🏕️🏔️",
-      followers: 3820,
-      following: 290,
-      stats: { trips: 28, saved: 84, cities: 22 }
-    },
-    {
-      id: "user_6",
-      name: "Nusrat Fariha",
-      username: "nusrat_roams",
-      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-      points: 1980,
-      league: "Expert",
-      bio: "Culinary traveler. Finding the best local street food 🍜",
-      followers: 1890,
-      following: 410,
-      stats: { trips: 18, saved: 45, cities: 15 }
-    },
-    {
-      id: "user_7",
-      name: "Mahir Zaman",
-      username: "mahir_voyages",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
-      points: 1420,
-      league: "Traveler",
-      bio: "Solo hitchhiker & river ferry enthusiast ⛵",
-      followers: 910,
-      following: 310,
-      stats: { trips: 11, saved: 27, cities: 10 }
-    }
-  ];
+  // Dynamic Travelers list for leaderboard sorting
+  const extendedUsers = currentUser ? [{
+    id: currentUser.id || currentUser.user_id,
+    name: currentUser.name || currentUser.username || "Traveler",
+    username: currentUser.username || "traveler",
+    avatar: currentUser.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=user",
+    points: currentUser.points || currentUser.league_points || 350,
+    league: currentUser.league || "Explorer",
+    bio: currentUser.bio || "",
+    followers: currentUser.followers || 0,
+    following: currentUser.following || 0,
+    stats: currentUser.stats || { trips: 0, saved: 0, cities: 0 }
+  }] : [];
 
   // Sorted & Filtered Travelers
   const sortedTravelers = [...extendedUsers]
     .filter(u => {
-      const matchesSearch = u.name.toLowerCase().includes(travelerSearch.toLowerCase()) || 
-                            u.username.toLowerCase().includes(travelerSearch.toLowerCase());
+      const matchesSearch = (u.name || "").toLowerCase().includes(travelerSearch.toLowerCase()) || 
+                            (u.username || "").toLowerCase().includes(travelerSearch.toLowerCase());
       const matchesLeague = selectedLeague === "All" || u.league === selectedLeague;
       return matchesSearch && matchesLeague;
     })
-    .sort((a, b) => b.points - a.points);
+    .sort((a, b) => (b.points || 0) - (a.points || 0));
 
   const topThreeTravelers = sortedTravelers.slice(0, 3);
 
   // Sorted & Filtered Tour Plans
   const sortedPlans = [...MOCK_TOUR_PLANS]
     .filter(p => {
-      return p.title.toLowerCase().includes(planSearch.toLowerCase()) ||
-             p.destinationName.toLowerCase().includes(planSearch.toLowerCase());
+      return (p.title || "").toLowerCase().includes(planSearch.toLowerCase()) ||
+             (p.destinationName || "").toLowerCase().includes(planSearch.toLowerCase());
     })
     .sort((a, b) => {
-      if (planSortBy === "rating") return b.rating - a.rating;
-      if (planSortBy === "likes") return b.likes - a.likes;
-      if (planSortBy === "budget") return a.totalBudget - b.totalBudget; // Lowest budget first
-      return b.rating - a.rating;
+      if (planSortBy === "rating") return (b.rating || 0) - (a.rating || 0);
+      if (planSortBy === "likes") return (b.likes || 0) - (a.likes || 0);
+      if (planSortBy === "budget") return (a.totalBudget || 0) - (b.totalBudget || 0); // Lowest budget first
+      return (b.rating || 0) - (a.rating || 0);
     });
 
   // Helper for league badge styling
@@ -331,70 +304,78 @@ export default function Rankings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedTravelers.map((user, idx) => {
-                    const rankNum = idx + 1;
+                  {sortedTravelers.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-base-content/50">
+                        No ranked travelers yet. Start earning points by posting travel stories and discovering places!
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedTravelers.map((user, idx) => {
+                      const rankNum = idx + 1;
 
-                    return (
-                      <tr key={user.id} className="hover">
-                        <td className="text-center font-black text-sm">
-                          {rankNum === 1 && <span className="text-amber-400 font-extrabold text-base">🥇 #1</span>}
-                          {rankNum === 2 && <span className="text-slate-400 font-extrabold text-base">🥈 #2</span>}
-                          {rankNum === 3 && <span className="text-amber-700 font-extrabold text-base">🥉 #3</span>}
-                          {rankNum > 3 && <span className="text-base-content/60">#{rankNum}</span>}
-                        </td>
+                      return (
+                        <tr key={user.id} className="hover">
+                          <td className="text-center font-black text-sm">
+                            {rankNum === 1 && <span className="text-amber-400 font-extrabold text-base">🥇 #1</span>}
+                            {rankNum === 2 && <span className="text-slate-400 font-extrabold text-base">🥈 #2</span>}
+                            {rankNum === 3 && <span className="text-amber-700 font-extrabold text-base">🥉 #3</span>}
+                            {rankNum > 3 && <span className="text-base-content/60">#{rankNum}</span>}
+                          </td>
 
-                        <td>
-                          <div className="flex items-center gap-3">
-                            <Link to={`/profile/${user.id || user.username}`}>
-                              <img src={user.avatar} className="w-9 h-9 rounded-full object-cover border border-base-300 hover:opacity-85 transition-opacity" alt={user.name} />
-                            </Link>
-                            <div>
-                              <Link to={`/profile/${user.id || user.username}`} className={`font-bold text-xs hover:underline block leading-tight ${bannedUsers.includes(user.id) ? 'line-through text-error' : ''}`}>
-                                {user.name} {bannedUsers.includes(user.id) && <span className="badge badge-error badge-xs ml-1 text-[8px]">BANNED</span>}
+                          <td>
+                            <div className="flex items-center gap-3">
+                              <Link to={`/profile/${user.id || user.username}`}>
+                                <img src={user.avatar} className="w-9 h-9 rounded-full object-cover border border-base-300 hover:opacity-85 transition-opacity" alt={user.name} />
                               </Link>
-                              <span className="text-[10px] text-base-content/50">@{user.username}</span>
+                              <div>
+                                <Link to={`/profile/${user.id || user.username}`} className={`font-bold text-xs hover:underline block leading-tight ${bannedUsers.includes(user.id) ? 'line-through text-error' : ''}`}>
+                                  {user.name} {bannedUsers.includes(user.id) && <span className="badge badge-error badge-xs ml-1 text-[8px]">BANNED</span>}
+                                </Link>
+                                <span className="text-[10px] text-base-content/50">@{user.username}</span>
+                              </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td>
-                          <span className={`badge ${getLeagueBadgeStyle(user.league)}`}>
-                            {user.league}
-                          </span>
-                        </td>
+                          <td>
+                            <span className={`badge ${getLeagueBadgeStyle(user.league)}`}>
+                              {user.league}
+                            </span>
+                          </td>
 
-                        <td className="text-center font-black text-amber-500">
-                          {user.points.toLocaleString()} pts
-                        </td>
+                          <td className="text-center font-black text-amber-500">
+                            {(user.points || 0).toLocaleString()} pts
+                          </td>
 
-                        <td className="text-center font-bold">
-                          {user.stats.trips}
-                        </td>
+                          <td className="text-center font-bold">
+                            {user.stats?.trips || 0}
+                          </td>
 
-                        <td className="text-center font-bold">
-                          {user.stats.cities}
-                        </td>
+                          <td className="text-center font-bold">
+                            {user.stats?.cities || 0}
+                          </td>
 
-                        <td className="text-right">
-                          {isAdmin ? (
-                            <button 
-                              onClick={() => toggleBanUser(user.id)}
-                              className={`btn btn-xs rounded-lg font-bold border-none shadow-md ${bannedUsers.includes(user.id) ? 'btn-warning text-slate-900' : 'btn-error text-white'}`}
-                            >
-                              {bannedUsers.includes(user.id) ? 'Unban' : 'Ban User'}
-                            </button>
-                          ) : (
-                            <Link 
-                              to={`/profile/${user.id || user.username}`}
-                              className="btn btn-xs btn-outline btn-primary rounded-lg font-bold"
-                            >
-                              View Profile
-                            </Link>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          <td className="text-right">
+                            {isAdmin ? (
+                              <button 
+                                onClick={() => toggleBanUser(user.id)}
+                                className={`btn btn-xs rounded-lg font-bold border-none shadow-md ${bannedUsers.includes(user.id) ? 'btn-warning text-slate-900' : 'btn-error text-white'}`}
+                              >
+                                {bannedUsers.includes(user.id) ? 'Unban' : 'Ban User'}
+                              </button>
+                            ) : (
+                              <Link 
+                                to={`/profile/${user.id || user.username}`}
+                                className="btn btn-xs btn-outline btn-primary rounded-lg font-bold"
+                              >
+                                View Profile
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -453,14 +434,21 @@ export default function Rankings() {
 
           {/* Tour Plan Rankings Cards Grid */}
           <div className="grid grid-cols-1 gap-6">
-            {sortedPlans.map((plan, idx) => {
-              const rankNum = idx + 1;
+            {sortedPlans.length === 0 ? (
+              <div className="card bg-base-100 border border-dashed border-base-300 p-12 text-center text-xs text-base-content/50 rounded-3xl space-y-2">
+                <Map className="w-10 h-10 mx-auto text-base-content/30" />
+                <p className="font-bold text-sm text-base-content">No tour plans available yet.</p>
+                <p>Create and share tour itineraries to see them ranked on the leaderboard!</p>
+              </div>
+            ) : (
+              sortedPlans.map((plan, idx) => {
+                const rankNum = idx + 1;
 
-              return (
-                <div 
-                  key={plan.id} 
-                  className="card bg-base-100 border border-base-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6 items-start md:items-center justify-between"
-                >
+                return (
+                  <div 
+                    key={plan.id} 
+                    className="card bg-base-100 border border-base-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row gap-6 items-start md:items-center justify-between"
+                  >
                   {/* Left: Rank Badge + Plan Info */}
                   <div className="flex items-start gap-4 flex-1">
                     {/* Rank Badge */}
@@ -540,7 +528,7 @@ export default function Rankings() {
 
                 </div>
               );
-            })}
+            }))}
           </div>
 
         </div>
