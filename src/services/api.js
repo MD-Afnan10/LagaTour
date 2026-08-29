@@ -279,6 +279,163 @@ export const api = {
       method: "DELETE"
     });
     return await handleResponse(res);
+  },
+
+  // ===================== PLACE TRACKING & "MY PLACES" =====================
+
+  /**
+   * Fetch all divisions and districts
+   */
+  async fetchLocations() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/places/locations`);
+      return await handleResponse(res);
+    } catch {
+      return { divisions: [], districts: [] };
+    }
+  },
+
+  /**
+   * Fetch nearby places within a radius using user's coordinates
+   */
+  async fetchNearbyPlaces(lat, lng, radius = 15) {
+    const res = await fetch(`${API_BASE_URL}/places/nearby?lat=${lat}&lng=${lng}&radius=${radius}`);
+    const data = await handleResponse(res);
+    return data.places || [];
+  },
+
+  /**
+   * Quick save current location with placeholder name to My Places
+   */
+  async quickSavePlace(payload) {
+    const res = await fetch(`${API_BASE_URL}/places/quick-save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Link an existing nearby place to user's My Places
+   */
+  async linkExistingPlace(user, placeId) {
+    const res = await fetch(`${API_BASE_URL}/places/link-existing`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, placeId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch all places in user's "My Places"
+   */
+  async fetchUserMyPlaces(userId) {
+    const res = await fetch(`${API_BASE_URL}/places/my-places/${userId}`);
+    const data = await handleResponse(res);
+    return data.places || [];
+  },
+
+  /**
+   * Update place details, upload photos, division, district, safety rating, and publish
+   */
+  async updatePlace(placeId, payload) {
+    const res = await fetch(`${API_BASE_URL}/places/${placeId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch public community places feed with filters
+   */
+  async fetchPublicPlaces(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.userId) params.append("userId", filters.userId);
+    if (filters.divisionId && filters.divisionId !== "All") params.append("divisionId", filters.divisionId);
+    if (filters.districtId && filters.districtId !== "All") params.append("districtId", filters.districtId);
+    if (filters.safetyFilter && filters.safetyFilter !== "All") params.append("safetyFilter", filters.safetyFilter);
+    if (filters.search) params.append("search", filters.search);
+
+    const url = `${API_BASE_URL}/places${params.toString() ? `?${params.toString()}` : ""}`;
+    const res = await fetch(url);
+    const data = await handleResponse(res);
+    return data.places || [];
+  },
+
+  /**
+   * Submit safety rating on a place (validates place is in My Places)
+   */
+  async ratePlaceSafety(placeId, user, safetyRating, reviewText) {
+    const res = await fetch(`${API_BASE_URL}/places/${placeId}/rate-safety`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, safetyRating, reviewText })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Toggle like on a place
+   */
+  async likePlace(placeId, user) {
+    const res = await fetch(`${API_BASE_URL}/places/${placeId}/like`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Add comment to a place
+   */
+  async commentPlace(placeId, user, commentText) {
+    const res = await fetch(`${API_BASE_URL}/places/${placeId}/comment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, commentText })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Toggle save place to My Places
+   */
+  async savePlace(placeId, user) {
+    const res = await fetch(`${API_BASE_URL}/places/${placeId}/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Report a place
+   */
+  async reportPlace(placeId, user, reason) {
+    const res = await fetch(`${API_BASE_URL}/places/${placeId}/report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, reason })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete place from My Places
+   */
+  async deleteFromMyPlaces(placeId, userId) {
+    const res = await fetch(`${API_BASE_URL}/places/my-places/${placeId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
+    });
+    return await handleResponse(res);
   }
 };
 

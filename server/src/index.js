@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { initDatabase } from "./config/db.js";
 import postRoutes from "./routes/postRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import placeRoutes from "./routes/placeRoutes.js";
 
 dotenv.config();
 
@@ -31,6 +32,7 @@ app.get("/api/health", (req, res) => {
 // API Routes
 app.use("/api", postRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/places", placeRoutes);
 
 // Error Handling Middleware
 app.use((err, req, res, next) => {
