@@ -150,10 +150,11 @@ export async function initDatabase() {
       CREATE TABLE IF NOT EXISTS \`post_comments\` (
         \`comment_id\` varchar(255) NOT NULL,
         \`post_id\` varchar(255) DEFAULT NULL,
+        \`place_id\` varchar(255) DEFAULT NULL,
         \`user_id\` varchar(255) NOT NULL,
         \`comment_text\` text NOT NULL,
         \`parent_comment_id\` varchar(255) DEFAULT NULL,
-        \`commented_type\` enum('post','tour_plan') NOT NULL DEFAULT 'post',
+        \`commented_type\` varchar(50) NOT NULL DEFAULT 'post',
         \`is_edited\` tinyint(1) DEFAULT 0,
         \`created_at\` datetime DEFAULT current_timestamp(),
         \`updated_at\` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
@@ -171,8 +172,9 @@ export async function initDatabase() {
         \`like_id\` varchar(255) NOT NULL,
         \`post_id\` varchar(255) DEFAULT NULL,
         \`tour_plan_id\` varchar(255) DEFAULT NULL,
+        \`place_id\` varchar(255) DEFAULT NULL,
         \`user_id\` varchar(255) NOT NULL,
-        \`liked_type\` enum('post','tour_plan') NOT NULL DEFAULT 'post',
+        \`liked_type\` varchar(50) NOT NULL DEFAULT 'post',
         \`created_at\` datetime DEFAULT current_timestamp(),
         PRIMARY KEY (\`like_id\`),
         KEY \`fk_like_post\` (\`post_id\`),
@@ -189,7 +191,8 @@ export async function initDatabase() {
         \`user_id\` varchar(255) NOT NULL,
         \`post_id\` varchar(255) DEFAULT NULL,
         \`tour_plan_id\` varchar(255) DEFAULT NULL,
-        \`saved_type\` enum('post','tour_plan') NOT NULL DEFAULT 'post',
+        \`place_id\` varchar(255) DEFAULT NULL,
+        \`saved_type\` varchar(50) NOT NULL DEFAULT 'post',
         \`created_at\` datetime DEFAULT current_timestamp(),
         PRIMARY KEY (\`saved_id\`),
         KEY \`fk_saved_user\` (\`user_id\`),
@@ -203,14 +206,14 @@ export async function initDatabase() {
     await p.query(`
       CREATE TABLE IF NOT EXISTS \`reports\` (
         \`report_id\` varchar(255) NOT NULL,
-        \`post_id\` varchar(255) NOT NULL,
+        \`post_id\` varchar(255) DEFAULT NULL,
+        \`place_id\` varchar(255) DEFAULT NULL,
         \`user_id\` varchar(255) NOT NULL,
+        \`report_type\` varchar(50) NOT NULL DEFAULT 'post',
         \`report_description\` text NOT NULL,
         \`created_at\` datetime DEFAULT current_timestamp(),
         PRIMARY KEY (\`report_id\`),
-        KEY \`fk_report_post\` (\`post_id\`),
         KEY \`fk_report_user\` (\`user_id\`),
-        CONSTRAINT \`fk_report_post\` FOREIGN KEY (\`post_id\`) REFERENCES \`posts\` (\`post_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
         CONSTRAINT \`fk_report_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
@@ -270,7 +273,149 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 13. Seed default users & posts & chats if empty
+    // 13. Create Divisions table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`divisions\` (
+        \`division_id\` varchar(50) NOT NULL,
+        \`division_name\` varchar(100) NOT NULL,
+        PRIMARY KEY (\`division_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 14. Create Districts table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`districts\` (
+        \`district_id\` varchar(50) NOT NULL,
+        \`district_name\` varchar(100) NOT NULL,
+        \`division_id\` varchar(50) NOT NULL,
+        PRIMARY KEY (\`district_id\`),
+        KEY \`fk_district_division\` (\`division_id\`),
+        CONSTRAINT \`fk_district_division\` FOREIGN KEY (\`division_id\`) REFERENCES \`divisions\` (\`division_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 15. Create Places table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`places\` (
+        \`place_id\` varchar(255) NOT NULL,
+        \`place_name\` varchar(255) NOT NULL,
+        \`description\` text DEFAULT NULL,
+        \`division_id\` varchar(50) DEFAULT NULL,
+        \`district_id\` varchar(50) DEFAULT NULL,
+        \`division\` varchar(100) DEFAULT NULL,
+        \`district\` varchar(100) DEFAULT NULL,
+        \`latitude\` decimal(10,8) NOT NULL,
+        \`longitude\` decimal(11,8) NOT NULL,
+        \`address\` varchar(500) DEFAULT NULL,
+        \`safety_rating\` decimal(3,2) DEFAULT 5.00,
+        \`safety_rating_count\` int(11) DEFAULT 0,
+        \`is_public\` tinyint(1) DEFAULT 0,
+        \`created_by\` varchar(255) DEFAULT NULL,
+        \`likes_count\` int(11) DEFAULT 0,
+        \`comments_count\` int(11) DEFAULT 0,
+        \`shares_count\` int(11) DEFAULT 0,
+        \`saves_count\` int(11) DEFAULT 0,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        \`updated_at\` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (\`place_id\`),
+        KEY \`fk_place_user\` (\`created_by\`),
+        CONSTRAINT \`fk_place_user\` FOREIGN KEY (\`created_by\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // Ensure missing columns exist in places table if created previously
+    try {
+      const [placeCols] = await p.query("SHOW COLUMNS FROM places");
+      const colNames = placeCols.map(c => c.Field);
+      if (!colNames.includes("division_id")) await p.query("ALTER TABLE places ADD COLUMN division_id varchar(50) NULL");
+      if (!colNames.includes("district_id")) await p.query("ALTER TABLE places ADD COLUMN district_id varchar(50) NULL");
+      if (!colNames.includes("safety_rating")) await p.query("ALTER TABLE places ADD COLUMN safety_rating decimal(3,2) DEFAULT 5.00");
+      if (!colNames.includes("safety_rating_count")) await p.query("ALTER TABLE places ADD COLUMN safety_rating_count int(11) DEFAULT 0");
+      if (!colNames.includes("is_public")) await p.query("ALTER TABLE places ADD COLUMN is_public tinyint(1) DEFAULT 0");
+      if (!colNames.includes("created_by")) await p.query("ALTER TABLE places ADD COLUMN created_by varchar(255) DEFAULT NULL");
+      if (!colNames.includes("likes_count")) await p.query("ALTER TABLE places ADD COLUMN likes_count int(11) DEFAULT 0");
+      if (!colNames.includes("comments_count")) await p.query("ALTER TABLE places ADD COLUMN comments_count int(11) DEFAULT 0");
+      if (!colNames.includes("shares_count")) await p.query("ALTER TABLE places ADD COLUMN shares_count int(11) DEFAULT 0");
+      if (!colNames.includes("saves_count")) await p.query("ALTER TABLE places ADD COLUMN saves_count int(11) DEFAULT 0");
+    } catch (alterErr) {
+      console.warn("Places table check warning:", alterErr.message);
+    }
+
+    // Ensure place_id column in post_likes, post_comments, saved_posts, reports
+    try {
+      await p.query("ALTER TABLE `post_likes` MODIFY `liked_type` varchar(50) NOT NULL DEFAULT 'post';");
+      await p.query("ALTER TABLE `post_comments` MODIFY `commented_type` varchar(50) NOT NULL DEFAULT 'post';");
+      await p.query("ALTER TABLE `saved_posts` MODIFY `saved_type` varchar(50) NOT NULL DEFAULT 'post';");
+      
+      const [likeCols] = await p.query("SHOW COLUMNS FROM post_likes LIKE 'place_id'");
+      if (likeCols.length === 0) await p.query("ALTER TABLE post_likes ADD COLUMN place_id varchar(255) NULL");
+
+      const [commCols] = await p.query("SHOW COLUMNS FROM post_comments LIKE 'place_id'");
+      if (commCols.length === 0) await p.query("ALTER TABLE post_comments ADD COLUMN place_id varchar(255) NULL");
+
+      const [saveCols] = await p.query("SHOW COLUMNS FROM saved_posts LIKE 'place_id'");
+      if (saveCols.length === 0) await p.query("ALTER TABLE saved_posts ADD COLUMN place_id varchar(255) NULL");
+
+      const [repCols] = await p.query("SHOW COLUMNS FROM reports LIKE 'place_id'");
+      if (repCols.length === 0) await p.query("ALTER TABLE reports ADD COLUMN place_id varchar(255) NULL");
+      
+      const [repTypeCols] = await p.query("SHOW COLUMNS FROM reports LIKE 'report_type'");
+      if (repTypeCols.length === 0) await p.query("ALTER TABLE reports ADD COLUMN report_type varchar(50) DEFAULT 'post'");
+    } catch (e) {
+      // safe fallback
+    }
+
+    // 16. Create Place Images table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`place_images\` (
+        \`img_id\` varchar(255) NOT NULL,
+        \`place_id\` varchar(255) NOT NULL,
+        \`image_url\` LONGTEXT NOT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`img_id\`),
+        KEY \`fk_img_place\` (\`place_id\`),
+        CONSTRAINT \`fk_img_place\` FOREIGN KEY (\`place_id\`) REFERENCES \`places\` (\`place_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 17. Create MyPlaces table (User's personal recorded places collection)
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`myplaces\` (
+        \`my_place_id\` varchar(255) NOT NULL,
+        \`user_id\` varchar(255) NOT NULL,
+        \`place_id\` varchar(255) NOT NULL,
+        \`is_owner\` tinyint(1) DEFAULT 1,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`my_place_id\`),
+        UNIQUE KEY \`unique_user_place\` (\`user_id\`, \`place_id\`),
+        KEY \`fk_myplace_user\` (\`user_id\`),
+        KEY \`fk_myplace_place\` (\`place_id\`),
+        CONSTRAINT \`fk_myplace_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_myplace_place\` FOREIGN KEY (\`place_id\`) REFERENCES \`places\` (\`place_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 18. Create Place Ratings table (Community Safety Ratings)
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`place_ratings\` (
+        \`rating_id\` varchar(255) NOT NULL,
+        \`user_id\` varchar(255) NOT NULL,
+        \`place_id\` varchar(255) NOT NULL,
+        \`place_rating\` decimal(3,2) NOT NULL DEFAULT 5.00,
+        \`review_text\` text DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        \`updated_at\` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (\`rating_id\`),
+        UNIQUE KEY \`unique_user_place_rating\` (\`user_id\`, \`place_id\`),
+        KEY \`fk_rating_user_idx\` (\`user_id\`),
+        KEY \`fk_rating_place_idx\` (\`place_id\`),
+        CONSTRAINT \`fk_pr_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_pr_place\` FOREIGN KEY (\`place_id\`) REFERENCES \`places\` (\`place_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 19. Seed default users & places & chats if empty
+
     await seedInitialData(p);
 
     console.log("✅ MySQL Database & Tables initialized successfully (lagatour_db)");
@@ -281,73 +426,125 @@ export async function initDatabase() {
 }
 
 async function seedInitialData(p) {
-  const defaultPasswordHash = await bcrypt.hash("password", 10);
   const adminPasswordHash = await bcrypt.hash("admin", 10);
 
-  // Guarantee seed users exist in MySQL database
-  const sampleUsers = [
-    ["user_1", "aria@laga.tour", defaultPasswordHash, "aria_travels", "Aria", "Jahan", "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", "Adventure seeker. Mapping the world one coffee at a time ☕🏕️", "Bangladesh", "Dhaka", "+8801700000001", "Solo", 2450, 1240, 480],
-    ["user_2", "nabil@laga.tour", defaultPasswordHash, "nabil_wanderer", "Nabil", "Ahmed", "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150", "Full-time explorer, photographer, and budget backpacker. 📸🏔️", "Bangladesh", "Chittagong", "+8801800000002", "Friends", 4800, 5300, 340],
-    ["user_3", "sadia@laga.tour", defaultPasswordHash, "sadia_expeditions", "Sadia", "Rahman", "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150", "Nature lover & weekend trekker. 🎒🌲", "Bangladesh", "Sylhet", "+8801900000003", "Group", 850, 320, 190],
-    ["user_4", "rashed@laga.tour", defaultPasswordHash, "rashed_backpacks", "Rashed", "Karim", "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=150", "Novice traveler. Dreaming of St. Martin's 🌊⛵", "Bangladesh", "Dhaka", "+8801600000004", "Family", 120, 45, 110],
-    ["admin_root", "admin@laga.tour", adminPasswordHash, "admin_root", "System", "Admin", "https://api.dicebear.com/7.x/adventurer/svg?seed=admin", "LagaTour System Administrator", "Bangladesh", "Dhaka", "+8801500000000", "Solo", 9999, 10000, 50]
-  ];
+  // Guarantee admin user exists in MySQL database
+  await p.query(`
+    INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count)
+    VALUES ('admin_root', 'admin@laga.tour', ?, 'admin_root', 'System', 'Admin', 'https://api.dicebear.com/7.x/adventurer/svg?seed=admin', 'LagaTour System Administrator', 'Bangladesh', 'Dhaka', '+8801500000000', 'Solo', 9999, 10000, 50)
+    ON DUPLICATE KEY UPDATE 
+      password_hash = COALESCE(users.password_hash, VALUES(password_hash))
+  `, [adminPasswordHash]);
 
-  for (const u of sampleUsers) {
-    await p.query(`
-      INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE 
-        password_hash = COALESCE(users.password_hash, VALUES(password_hash))
-    `, u);
+  // Clean up any previously seeded dummy users, posts, and places if they exist
+  try {
+    await p.query("DELETE FROM users WHERE user_id IN ('user_1', 'user_2', 'user_3', 'user_4')");
+    await p.query("DELETE FROM posts WHERE post_id IN ('post_1', 'post_2')");
+    await p.query("DELETE FROM places WHERE place_id IN ('place_cxb_beach', 'place_sajek_valley', 'place_sreemangal_tea', 'place_st_martin', 'place_ratargul_swamp')");
+  } catch (cleanErr) {
+    // Non-fatal if tables are already empty
   }
 
-  // Check if posts exist
-  const [postsCount] = await p.query("SELECT COUNT(*) as count FROM posts");
-  if (postsCount[0].count === 0) {
-    console.log("🌱 Seeding initial posts and media into lagatour_db...");
-    
-    // Post 1
-    await p.query(`
-      INSERT INTO posts (post_id, user_id, caption, likes_count, comments_count, shares_count, saves_count, is_public)
-      VALUES ('post_1', 'user_1', 'Sunset at Cox\\'s Bazar marine drive is magic. 🌅 Blue waves crashing against green hills, a dream route for any traveler! #oceanvibes #coxsbazar #traveldiary', 215, 2, 14, 29, 1)
-    `);
-    await p.query(`
-      INSERT INTO post_media (media_id, post_id, media_url, media_type, ai_verification_status)
-      VALUES 
-        ('media_1_1', 'post_1', 'https://images.unsplash.com/photo-1589308078059-be1415eab4c3?w=800', 'photo', 'approved'),
-        ('media_1_2', 'post_1', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800', 'photo', 'approved')
-    `);
-    await p.query(`
-      INSERT INTO post_comments (comment_id, post_id, user_id, comment_text)
-      VALUES 
-        ('c_1', 'post_1', 'user_2', 'Stunning shot! The lighting is perfect.'),
-        ('c_2', 'post_1', 'user_3', 'Can\\'t wait to visit next week!')
-    `);
+  // 1. Seed Bangladesh Geographic Divisions (Reference Data)
+  const divisionsData = [
+    ["div_dhaka", "Dhaka"],
+    ["div_chittagong", "Chattogram"],
+    ["div_rajshahi", "Rajshahi"],
+    ["div_khulna", "Khulna"],
+    ["div_barisal", "Barishal"],
+    ["div_sylhet", "Sylhet"],
+    ["div_rangpur", "Rangpur"],
+    ["div_mymensingh", "Mymensingh"]
+  ];
 
-    // Post 2
-    await p.query(`
-      INSERT INTO posts (post_id, user_id, caption, likes_count, comments_count, shares_count, saves_count, is_public)
-      VALUES ('post_2', 'user_2', 'Woke up above the clouds today in Sajek Valley. ☁️🏕️ The morning breeze and lush green mountain peaks are absolutely worth the bumpy Chander Gari ride!', 487, 2, 38, 110, 1)
-    `);
-    await p.query(`
-      INSERT INTO post_media (media_id, post_id, media_url, media_type, ai_verification_status)
-      VALUES 
-        ('media_2_1', 'post_2', 'https://images.unsplash.com/photo-1628155930542-3c7a64e2c833?w=800', 'photo', 'approved'),
-        ('media_2_2', 'post_2', 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', 'video', 'approved')
-    `);
-    await p.query(`
-      INSERT INTO post_comments (comment_id, post_id, user_id, comment_text)
-      VALUES 
-        ('c_3', 'post_2', 'user_1', 'Take me back there! 🥺'),
-        ('c_4', 'post_2', 'user_4', 'Which cottage has this view?')
-    `);
+  for (const [id, name] of divisionsData) {
+    await p.query(
+      "INSERT INTO divisions (division_id, division_name) VALUES (?, ?) ON DUPLICATE KEY UPDATE division_name = VALUES(division_name)",
+      [id, name]
+    );
+  }
 
-    // Sample initial report for admin moderation
-    await p.query(`
-      INSERT INTO reports (report_id, post_id, user_id, report_description)
-      VALUES ('rep_1', 'post_2', 'user_3', 'Contains potentially dangerous cliff trekking tips without safety warnings.')
-    `);
+  // 2. Seed 64 Bangladesh Districts (Reference Data)
+  const districtsData = [
+    // Dhaka
+    ["dis_dhaka", "Dhaka", "div_dhaka"],
+    ["dis_gazipur", "Gazipur", "div_dhaka"],
+    ["dis_narayanganj", "Narayanganj", "div_dhaka"],
+    ["dis_tangail", "Tangail", "div_dhaka"],
+    ["dis_kishoreganj", "Kishoreganj", "div_dhaka"],
+    ["dis_manikganj", "Manikganj", "div_dhaka"],
+    ["dis_munshiganj", "Munshiganj", "div_dhaka"],
+    ["dis_narsingdi", "Narsingdi", "div_dhaka"],
+    ["dis_faridpur", "Faridpur", "div_dhaka"],
+    ["dis_gopalganj", "Gopalganj", "div_dhaka"],
+    ["dis_madaripur", "Madaripur", "div_dhaka"],
+    ["dis_rajbari", "Rajbari", "div_dhaka"],
+    ["dis_shariatpur", "Shariatpur", "div_dhaka"],
+    // Chattogram
+    ["dis_chattogram", "Chattogram", "div_chittagong"],
+    ["dis_coxsbazar", "Cox's Bazar", "div_chittagong"],
+    ["dis_rangamati", "Rangamati", "div_chittagong"],
+    ["dis_bandarban", "Bandarban", "div_chittagong"],
+    ["dis_khagrachari", "Khagrachari", "div_chittagong"],
+    ["dis_cumilla", "Cumilla", "div_chittagong"],
+    ["dis_feni", "Feni", "div_chittagong"],
+    ["dis_brahmanbaria", "Brahmanbaria", "div_chittagong"],
+    ["dis_noakhali", "Noakhali", "div_chittagong"],
+    ["dis_chandpur", "Chandpur", "div_chittagong"],
+    ["dis_lakshmipur", "Lakshmipur", "div_chittagong"],
+    // Rajshahi
+    ["dis_rajshahi", "Rajshahi", "div_rajshahi"],
+    ["dis_bogura", "Bogura", "div_rajshahi"],
+    ["dis_joypurhat", "Joypurhat", "div_rajshahi"],
+    ["dis_naogaon", "Naogaon", "div_rajshahi"],
+    ["dis_natore", "Natore", "div_rajshahi"],
+    ["dis_chapainawabganj", "Chapainawabganj", "div_rajshahi"],
+    ["dis_pabna", "Pabna", "div_rajshahi"],
+    ["dis_sirajganj", "Sirajganj", "div_rajshahi"],
+    // Khulna
+    ["dis_khulna", "Khulna", "div_khulna"],
+    ["dis_jashore", "Jashore", "div_khulna"],
+    ["dis_satkhira", "Satkhira", "div_khulna"],
+    ["dis_bagerhat", "Bagerhat", "div_khulna"],
+    ["dis_kushtia", "Kushtia", "div_khulna"],
+    ["dis_chuadanga", "Chuadanga", "div_khulna"],
+    ["dis_meherpur", "Meherpur", "div_khulna"],
+    ["dis_jhenaidah", "Jhenaidah", "div_khulna"],
+    ["dis_magura", "Magura", "div_khulna"],
+    ["dis_narail", "Narail", "div_khulna"],
+    // Barishal
+    ["dis_barishal", "Barishal", "div_barisal"],
+    ["dis_patuakhali", "Patuakhali", "div_barisal"],
+    ["dis_bhola", "Bhola", "div_barisal"],
+    ["dis_pirojpur", "Pirojpur", "div_barisal"],
+    ["dis_barguna", "Barguna", "div_barisal"],
+    ["dis_jhalokati", "Jhalokati", "div_barisal"],
+    // Sylhet
+    ["dis_sylhet", "Sylhet", "div_sylhet"],
+    ["dis_moulvibazar", "Moulvibazar", "div_sylhet"],
+    ["dis_habiganj", "Habiganj", "div_sylhet"],
+    ["dis_sunamganj", "Sunamganj", "div_sylhet"],
+    // Rangpur
+    ["dis_rangpur", "Rangpur", "div_rangpur"],
+    ["dis_dinajpur", "Dinajpur", "div_rangpur"],
+    ["dis_gaibandha", "Gaibandha", "div_rangpur"],
+    ["dis_kurigram", "Kurigram", "div_rangpur"],
+    ["dis_lalmonirhat", "Lalmonirhat", "div_rangpur"],
+    ["dis_nilphamari", "Nilphamari", "div_rangpur"],
+    ["dis_panchagarh", "Panchagarh", "div_rangpur"],
+    ["dis_thakurgaon", "Thakurgaon", "div_rangpur"],
+    // Mymensingh
+    ["dis_mymensingh", "Mymensingh", "div_mymensingh"],
+    ["dis_jamalpur", "Jamalpur", "div_mymensingh"],
+    ["dis_netrokona", "Netrokona", "div_mymensingh"],
+    ["dis_sherpur", "Sherpur", "div_mymensingh"]
+  ];
+
+  for (const [id, name, divId] of districtsData) {
+    await p.query(
+      "INSERT INTO districts (district_id, district_name, division_id) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE district_name = VALUES(district_name), division_id = VALUES(division_id)",
+      [id, name, divId]
+    );
   }
 
   // Seed sample conversations & messages if empty

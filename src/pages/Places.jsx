@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { MOCK_DESTINATIONS } from "../data/mockData";
+import api from "../services/api";
+import AddPlaceLocationModal from "../components/modals/AddPlaceLocationModal";
 import { 
   MapPin, 
   Star, 
@@ -12,554 +13,670 @@ import {
   Plus, 
   Send, 
   X, 
-  Sparkles,
-  AlertTriangle,
-  Search,
-  Filter
+  Sparkles, 
+  AlertTriangle, 
+  Search, 
+  Filter, 
+  Heart, 
+  Share2, 
+  Flag, 
+  Navigation, 
+  CheckCircle2, 
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  Globe
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
 export default function Places() {
   const { currentUser, addPoints } = useAuth();
   
-  const [places, setPlaces] = useState(MOCK_DESTINATIONS);
+  const [places, setPlaces] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [locations, setLocations] = useState({ divisions: [], districts: [] });
+
+  // Filters
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [safetyFilter, setSafetyFilter] = useState("All"); // All, Safe, Unsafe
+  const [selectedDivision, setSelectedDivision] = useState("All");
+  const [selectedDistrict, setSelectedDistrict] = useState("All");
+  const [safetyFilter, setSafetyFilter] = useState("All"); // All, Safe, Moderate, Caution
 
-  // Modal State for Rating & Safety Report
+  // Modals
+  const [isAddLocationOpen, setIsAddLocationOpen] = useState(false);
   const [ratingModalPlace, setRatingModalPlace] = useState(null);
-  const [userRating, setUserRating] = useState(5);
-  const [markUnsafe, setMarkUnsafe] = useState(false);
-  const [ratingComment, setRatingComment] = useState("");
-
-  // Comment input state for inline comments
+  const [safetyRatingScore, setSafetyRatingScore] = useState(5);
+  const [safetyReviewText, setSafetyReviewText] = useState("");
+  const [reportModalPlace, setReportModalPlace] = useState(null);
+  const [reportReason, setReportReason] = useState("");
+  
+  // Inline Comment Inputs State
   const [commentInputs, setCommentInputs] = useState({});
+  const [activePhotoIdx, setActivePhotoIdx] = useState({});
+  const [toastMsg, setToastMsg] = useState("");
 
-  // Categories list
-  const categories = ["All", ...new Set(places.map(p => p.category))];
-
-  // Open modal handler
-  const handleOpenRatingModal = (place) => {
-    setRatingModalPlace(place);
-    setUserRating(5);
-    setMarkUnsafe(false);
-    setRatingComment("");
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(""), 3000);
   };
 
-  // Submit Rating & Safety Report Modal
-  const handleSubmitRatingModal = (e) => {
-    e.preventDefault();
-    if (!ratingModalPlace) return;
+  // 1. Fetch Divisions & Districts
+  useEffect(() => {
+    api.fetchLocations().then(res => {
+      if (res && res.divisions) {
+        setLocations(res);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // 2. Fetch Public Places from Backend
+  const loadPlaces = async () => {
+    setIsLoading(true);
+    const uId = currentUser?.id || currentUser?.user_id || null;
+    try {
+      const fetched = await api.fetchPublicPlaces({
+        userId: uId,
+        divisionId: selectedDivision,
+        districtId: selectedDistrict,
+        safetyFilter: safetyFilter,
+        search: searchQuery
+      });
+
+      setPlaces(Array.isArray(fetched) ? fetched : []);
+    } catch (err) {
+      console.warn("Could not fetch public places from backend:", err.message);
+      setPlaces([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPlaces();
+  }, [currentUser, selectedDivision, selectedDistrict, safetyFilter]);
+
+  // Handle Search Debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadPlaces();
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Filter districts by selected division
+  const availableDistricts = selectedDivision === "All" 
+    ? locations.districts 
+    : locations.districts.filter(d => d.division_id === selectedDivision);
+
+  // 3. Handle Like Place
+  const handleLikePlace = async (placeId) => {
+    if (!currentUser) {
+      showToast("⚠️ Please log in to like places.");
+      return;
+    }
 
     setPlaces(prev => prev.map(p => {
-      if (p.id === ratingModalPlace.id) {
-        const newUnsafeCount = markUnsafe ? (p.unsafeCount || 0) + 1 : (p.unsafeCount || 0);
-        const newComments = p.comments || [];
-        
-        if (ratingComment.trim()) {
-          newComments.unshift({
-            id: "pc_" + Date.now(),
-            user: currentUser ? currentUser.username : "traveler",
-            avatar: currentUser ? currentUser.avatar : "https://api.dicebear.com/7.x/adventurer/svg?seed=guest",
-            text: ratingComment,
-            time: "Just now"
-          });
-        }
-
-        // Calculate new rating
-        const currentCount = p.visitedCount || 10;
-        const newScore = Number(((p.rating * currentCount + userRating) / (currentCount + 1)).toFixed(1));
-
+      if (p.id === placeId || p.place_id === placeId) {
+        const nextLiked = !p.hasLiked;
         return {
           ...p,
-          rating: newScore,
-          unsafeCount: newUnsafeCount,
-          comments: newComments
+          hasLiked: nextLiked,
+          likesCount: Math.max(0, (p.likesCount || 0) + (nextLiked ? 1 : -1))
         };
       }
       return p;
     }));
 
-    addPoints(20);
-    confetti({
-      particleCount: 80,
-      spread: 60,
-      origin: { y: 0.7 }
-    });
+    if (addPoints) addPoints(5);
 
-    setRatingModalPlace(null);
+    try {
+      await api.likePlace(placeId, currentUser);
+    } catch (err) {
+      console.warn("Like API failed:", err.message);
+    }
   };
 
-  // Submit inline comment
-  const handleInlineComment = (placeId, e) => {
+  // 4. Handle Inline Comment
+  const handleInlineComment = async (placeId, e) => {
     e.preventDefault();
     const commentText = commentInputs[placeId] || "";
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || !currentUser) return;
+
+    const newCommentObj = {
+      id: "pc_" + Date.now(),
+      user: currentUser.username || currentUser.name || "traveler",
+      avatar: currentUser.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${currentUser.username}`,
+      text: commentText.trim(),
+      time: "Just now"
+    };
 
     setPlaces(prev => prev.map(p => {
-      if (p.id === placeId) {
+      if (p.id === placeId || p.place_id === placeId) {
         return {
           ...p,
-          comments: [
-            {
-              id: "pc_" + Date.now(),
-              user: currentUser ? currentUser.username : "traveler",
-              avatar: currentUser ? currentUser.avatar : "https://api.dicebear.com/7.x/adventurer/svg?seed=guest",
-              text: commentText,
-              time: "Just now"
-            },
-            ...(p.comments || [])
-          ]
+          commentsCount: (p.commentsCount || 0) + 1,
+          comments: [newCommentObj, ...(p.comments || [])]
         };
       }
       return p;
     }));
 
     setCommentInputs(prev => ({ ...prev, [placeId]: "" }));
-    addPoints(10);
+    if (addPoints) addPoints(10);
+    showToast("💬 Comment posted!");
+
+    try {
+      await api.commentPlace(placeId, currentUser, commentText.trim());
+    } catch (err) {
+      console.warn("Comment API failed:", err.message);
+    }
   };
 
-  // Filtered places
-  const filteredPlaces = places.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCat = selectedCategory === "All" || p.category === selectedCategory;
-    const matchesSafety = safetyFilter === "All" || 
-                          (safetyFilter === "Safe" && (!p.unsafeCount || p.unsafeCount === 0)) ||
-                          (safetyFilter === "Unsafe" && p.unsafeCount > 0);
-
-    return matchesSearch && matchesCat && matchesSafety;
-  });
-
-  // Modal state for Adding New Place
-  const [isAddPlaceOpen, setIsAddPlaceOpen] = useState(false);
-  const [newPlaceName, setNewPlaceName] = useState("");
-  const [newPlaceCategory, setNewPlaceCategory] = useState("Nature");
-  const [newPlaceImage, setNewPlaceImage] = useState("");
-  const [newPlaceDesc, setNewPlaceDesc] = useState("");
-  const [newPlaceCaption, setNewPlaceCaption] = useState("");
-
-  const handleCreatePlace = (e) => {
+  // 6. Handle Safety Rating Modal Submit
+  const handleSubmitSafetyRating = async (e) => {
     e.preventDefault();
-    if (!newPlaceName || !newPlaceDesc) return;
+    if (!ratingModalPlace) return;
 
-    const createdPlace = {
-      id: "dest_" + Date.now(),
-      name: newPlaceName,
-      lat: 23.8103,
-      lng: 90.4125,
-      image: newPlaceImage || "https://images.unsplash.com/photo-1589308078059-be1415eab4c3?w=800",
-      description: newPlaceDesc,
-      caption: newPlaceCaption || "Must visit location for scenic sights!",
-      rating: 5.0,
-      category: newPlaceCategory,
-      visitedCount: 1,
-      unsafeCount: 0,
-      comments: []
-    };
+    const pId = ratingModalPlace.id || ratingModalPlace.place_id;
 
-    setPlaces([createdPlace, ...places]);
-    setIsAddPlaceOpen(false);
-    setNewPlaceName("");
-    setNewPlaceDesc("");
-    setNewPlaceCaption("");
-    setNewPlaceImage("");
+    try {
+      const res = await api.ratePlaceSafety(pId, currentUser, safetyRatingScore, safetyReviewText);
 
-    addPoints(50);
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
+      setPlaces(prev => prev.map(p => {
+        if (p.id === pId || p.place_id === pId) {
+          return {
+            ...p,
+            safetyRating: res.safetyRating || safetyRatingScore,
+            safetyRatingCount: res.safetyRatingCount || (p.safetyRatingCount || 0) + 1
+          };
+        }
+        return p;
+      }));
+
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      showToast("🛡️ Verified safety rating & review submitted!");
+      if (addPoints) addPoints(15);
+      setRatingModalPlace(null);
+    } catch (err) {
+      showToast(err.message || "Failed to submit safety rating.");
+    }
+  };
+
+  // 7. Handle Report Modal Submit
+  const handleSubmitReport = async (e) => {
+    e.preventDefault();
+    if (!reportModalPlace) return;
+
+    const pId = reportModalPlace.id || reportModalPlace.place_id;
+
+    try {
+      await api.reportPlace(pId, currentUser, reportReason);
+      showToast("🚩 Place reported. Our moderation team will verify.");
+      setReportModalPlace(null);
+      setReportReason("");
+    } catch (err) {
+      showToast(err.message || "Failed to submit report.");
+    }
   };
 
   return (
-    <div className="container mx-auto px-4 md:px-8 py-6 max-w-6xl">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8">
+    <div className="container mx-auto px-4 md:px-8 py-6 max-w-6xl space-y-6">
+      
+      {/* Toast Alert */}
+      {toastMsg && (
+        <div className="toast toast-top toast-center z-50 animate-bounce">
+          <div className="alert alert-info text-white text-xs font-bold shadow-2xl rounded-2xl py-2.5 px-4 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4" />
+            <span>{toastMsg}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Header Banner */}
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-gradient-to-r from-primary/10 via-base-200 to-primary/5 p-6 rounded-3xl border border-base-200">
         <div>
-          <h1 className="text-3xl font-black tracking-tight mb-1 flex items-center gap-2">
-            <Compass className="w-7 h-7 text-primary" /> Destination Places
-          </h1>
-          <p className="text-sm text-base-content/60">
-            Explore curated spots, read user reviews, check safety status, and rate tourist locations.
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-black tracking-tight mb-1">Explore Places & Safety</h1>
+            <span className="badge badge-primary font-bold text-xs">Community Verified</span>
+          </div>
+          <p className="text-xs text-base-content/70 max-w-lg">
+            Discover verified spots across all 64 districts in Bangladesh, record your GPS locations, and review tourist safety ratings.
           </p>
         </div>
-
+        
         <button 
-          onClick={() => setIsAddPlaceOpen(true)}
-          className="btn btn-primary text-primary-content font-black rounded-xl capitalize shadow-lg border-none gap-2 self-start md:self-auto"
+          onClick={() => setIsAddLocationOpen(true)}
+          className="btn btn-primary text-slate-900 font-black rounded-2xl capitalize shadow-lg border-none gap-2 self-start md:self-auto hover:scale-105 transition-transform"
         >
-          <Plus className="w-4 h-4" /> Add New Place
+          <Navigation className="w-4 h-4" /> 📍 Record Current Place
         </button>
       </div>
 
-      {/* Filter & Search Bar */}
-      <div className="card bg-base-100 border border-base-200 p-4 mb-8 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Search */}
-          <div className="form-control">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-base-content/40" />
-              <input 
-                type="text" 
-                placeholder="Search place name or description..." 
-                className="input input-sm input-bordered w-full pl-9 text-xs rounded-lg" 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+      {/* Filters Card */}
+      <div className="card bg-base-100 border border-base-200 p-4 rounded-3xl shadow-sm space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-base-content/40" />
+            <input 
+              type="text" 
+              placeholder="Search place, district, notes..." 
+              className="input input-sm input-bordered w-full pl-9 text-xs rounded-xl" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
 
-          {/* Category Filter */}
-          <div className="form-control">
+          {/* Division Filter */}
+          <div>
             <select 
-              className="select select-sm select-bordered w-full text-xs rounded-lg"
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="select select-sm select-bordered w-full text-xs rounded-xl font-semibold"
+              value={selectedDivision}
+              onChange={(e) => {
+                setSelectedDivision(e.target.value);
+                setSelectedDistrict("All");
+              }}
             >
-              {categories.map((cat, idx) => (
-                <option key={idx} value={cat}>{cat === "All" ? "All Categories" : cat}</option>
+              <option value="All">All Divisions</option>
+              {locations.divisions.map((div) => (
+                <option key={div.division_id} value={div.division_id}>{div.division_name}</option>
               ))}
             </select>
           </div>
 
-          {/* Safety Status Filter */}
-          <div className="form-control">
+          {/* District Filter */}
+          <div>
             <select 
-              className="select select-sm select-bordered w-full text-xs rounded-lg"
+              className="select select-sm select-bordered w-full text-xs rounded-xl font-semibold"
+              value={selectedDistrict}
+              onChange={(e) => setSelectedDistrict(e.target.value)}
+            >
+              <option value="All">All Districts</option>
+              {availableDistricts.map((dis) => (
+                <option key={dis.district_id} value={dis.district_id}>{dis.district_name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Safety Filter */}
+          <div>
+            <select 
+              className="select select-sm select-bordered w-full text-xs rounded-xl font-semibold"
               value={safetyFilter}
               onChange={(e) => setSafetyFilter(e.target.value)}
             >
-              <option value="All">All Safety Statuses</option>
-              <option value="Safe">Safe Places Only</option>
-              <option value="Unsafe">Flagged Unsafe Places</option>
+              <option value="All">All Safety Ratings</option>
+              <option value="Safe">Very Safe (4.5★ - 5.0★)</option>
+              <option value="Moderate">Moderate (3.5★ - 4.4★)</option>
+              <option value="Caution">Exercise Caution (&lt; 3.5★)</option>
             </select>
           </div>
+
         </div>
       </div>
 
-      {/* Places Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {filteredPlaces.length === 0 ? (
-          <div className="col-span-2 text-center py-12 bg-base-100 border border-base-200 rounded-2xl">
-            <Compass className="w-12 h-12 text-base-content/30 mx-auto mb-2" />
-            <p className="font-bold text-base-content/75">No places match your search filter</p>
-          </div>
-        ) : (
-          filteredPlaces.map((place) => {
-            const isUnsafe = place.unsafeCount > 0;
+      {/* Places Feed Grid */}
+      {isLoading ? (
+        <div className="text-center py-20 text-xs text-base-content/50 flex flex-col items-center justify-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          <span className="font-bold">Loading community verified places...</span>
+        </div>
+      ) : places.length === 0 ? (
+        <div className="text-center py-16 bg-base-100 border border-base-200 rounded-3xl p-6 space-y-3 shadow-sm">
+          <Compass className="w-12 h-12 text-base-content/30 mx-auto" />
+          <h3 className="font-black text-base text-base-content">No places found matching your filters</h3>
+          <p className="text-xs text-base-content/60 max-w-sm mx-auto">
+            Be the first traveler to record and publish a new location in this area!
+          </p>
+          <button
+            onClick={() => setIsAddLocationOpen(true)}
+            className="btn btn-sm btn-primary text-slate-900 font-bold rounded-xl gap-2 mt-2 shadow-md"
+          >
+            <Navigation className="w-4 h-4" /> 📍 Record Spot Here
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {places.map((place) => {
+            const pId = place.id || place.place_id;
+            const images = place.images && Array.isArray(place.images) && place.images.length > 0 
+              ? place.images 
+              : (place.image ? [place.image] : []);
+            
+            const curPhotoIdx = activePhotoIdx[pId] || 0;
+            const currentImg = images[curPhotoIdx] || images[0];
+            const safety = parseFloat(place.safetyRating || place.safety_rating || 5.0);
+            const isSafe = safety >= 4.5;
+            const isCaution = safety < 3.5;
 
             return (
               <div 
-                key={place.id} 
-                className={`card bg-base-100 border overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between ${
-                  isUnsafe ? "border-error/50 bg-error/5" : "border-base-200"
-                }`}
+                key={pId}
+                className="card bg-base-100 border border-base-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between rounded-3xl"
               >
                 <div>
-                  {/* Card Image Banner */}
-                  <div className="relative h-56 overflow-hidden bg-base-300">
-                    <img 
-                      src={place.image} 
-                      alt={place.name} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                    />
+                  
+                  {/* Photo Gallery Banner */}
+                  <div className="relative h-60 overflow-hidden bg-base-300 group">
+                    {images.length > 0 ? (
+                      <img 
+                        src={currentImg} 
+                        alt={place.placeName || place.name || place.place_name} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-base-200/80 text-base-content/40 space-y-2">
+                        <MapPin className="w-10 h-10 text-primary/40" />
+                        <span className="text-xs font-bold text-base-content/50">No photos attached</span>
+                      </div>
+                    )}
+
+                    {/* Left/Right Photo Carousel Arrows */}
+                    {images.length > 1 && (
+                      <>
+                        <button
+                          onClick={() => setActivePhotoIdx(prev => ({ ...prev, [pId]: (curPhotoIdx - 1 + images.length) % images.length }))}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 btn btn-xs btn-circle bg-black/50 text-white border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setActivePhotoIdx(prev => ({ ...prev, [pId]: (curPhotoIdx + 1) % images.length }))}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-xs btn-circle bg-black/50 text-white border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex gap-1">
+                          {images.map((_, idx) => (
+                            <span 
+                              key={idx} 
+                              className={`w-1.5 h-1.5 rounded-full ${idx === curPhotoIdx ? 'bg-primary w-3' : 'bg-white/60'} transition-all`} 
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
                     
-                    {/* Category Pill */}
-                    <span className="absolute top-3 left-3 badge badge-neutral text-xs font-bold shadow-md">
-                      {place.category}
+                    {/* District / Division Badge */}
+                    <span className="absolute top-3 left-3 badge badge-neutral text-[11px] font-bold shadow-md bg-black/70 text-white border-none">
+                      📍 {place.district || "Bangladesh"} • {place.division || "BD"}
                     </span>
 
-                    {/* Safety Status Tag */}
-                    {isUnsafe ? (
-                      <div className="absolute top-3 right-3 bg-error text-white font-black text-xs py-1 px-3 rounded-full flex items-center gap-1 shadow-lg animate-pulse">
-                        <AlertTriangle className="w-4 h-4" />
-                        <span>UNSAFE ({place.unsafeCount} Reports)</span>
-                      </div>
-                    ) : (
-                      <div className="absolute top-3 right-3 bg-success text-white font-bold text-xs py-1 px-3 rounded-full flex items-center gap-1 shadow-md">
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Verified Safe</span>
-                      </div>
-                    )}
+                    {/* Safety Badge */}
+                    <div className={`absolute top-3 right-3 text-xs font-black py-1 px-3 rounded-full flex items-center gap-1 shadow-lg ${
+                      isSafe ? "bg-emerald-500 text-white" : isCaution ? "bg-error text-white animate-pulse" : "bg-amber-500 text-slate-900"
+                    }`}>
+                      {isSafe ? <ShieldCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                      <span>Safety: {safety.toFixed(1)}★</span>
+                    </div>
                   </div>
 
-                  {/* Card Content */}
+                  {/* Card Content Details */}
                   <div className="p-5 space-y-4">
                     
-                    {/* Header: Title & Rating */}
+                    {/* Title & Coordinates */}
                     <div className="flex justify-between items-start gap-2">
                       <div>
-                        <h2 className="text-xl font-black m-0 flex items-center gap-1.5">
-                          <MapPin className="w-5 h-5 text-primary" /> {place.name}
+                        <h2 className="text-xl font-black m-0 leading-tight">
+                          {place.name || place.place_name}
                         </h2>
-                        <p className="text-xs text-base-content/70 mt-1 leading-relaxed">
-                          {place.description}
-                        </p>
-                      </div>
-                      
-                      <div className="flex flex-col items-end shrink-0">
-                        <div className="flex items-center gap-1 text-yellow-500 font-black text-sm">
-                          <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />
-                          <span>{place.rating}</span>
+                        <div className="flex items-center gap-2 text-[11px] text-base-content/60 mt-1">
+                          <span>By @{place.author?.username || "traveler"}</span>
+                          {place.latitude && (
+                            <span className="font-mono text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                              GPS: {parseFloat(place.latitude).toFixed(3)}, {parseFloat(place.longitude).toFixed(3)}
+                            </span>
+                          )}
                         </div>
-                        <span className="text-[10px] text-base-content/50">Visited {place.visitedCount}+</span>
+                      </div>
+
+                      <div className="flex items-center gap-1 text-yellow-500 font-black text-sm shrink-0 bg-yellow-500/10 px-2.5 py-1 rounded-xl">
+                        <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />
+                        <span>{safety.toFixed(1)}</span>
+                        <span className="text-[10px] text-base-content/50 font-normal">({place.safetyRatingCount || 1})</span>
                       </div>
                     </div>
 
-                    {/* Worth Exploring Caption Box */}
-                    {place.caption && (
-                      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 p-3 rounded-xl">
-                        <span className="text-[10px] font-black uppercase text-amber-500 flex items-center gap-1 mb-0.5">
-                          <Sparkles className="w-3.5 h-3.5" /> Worth Exploring
-                        </span>
-                        <p className="text-xs font-semibold text-base-content/90 italic">
-                          "{place.caption}"
-                        </p>
+                    {/* Short Description */}
+                    <p className="text-xs text-base-content/80 leading-relaxed">
+                      {place.description || "Scenic travel destination recorded by community traveler."}
+                    </p>
+
+                    {/* Action Bar: Like, Rate Safety, Report */}
+                    <div className="flex items-center justify-between pt-3 border-t border-base-200 gap-2 flex-wrap">
+                      
+                      <div className="flex items-center gap-1.5">
+                        {/* Like Button */}
+                        <button 
+                          onClick={() => handleLikePlace(pId)}
+                          className={`btn btn-xs rounded-xl font-bold gap-1 ${
+                            place.hasLiked ? "btn-error text-white" : "btn-ghost"
+                          }`}
+                        >
+                          <Heart className={`w-3.5 h-3.5 ${place.hasLiked ? 'fill-current' : ''}`} />
+                          <span>{place.likesCount || 0}</span>
+                        </button>
                       </div>
-                    )}
 
-                    {/* Rate & Mark Unsafe Action Button */}
-                    <div className="flex justify-between items-center pt-2 border-t border-base-200">
-                      <button 
-                        onClick={() => handleOpenRatingModal(place)}
-                        className="btn btn-sm btn-primary text-primary-content font-bold rounded-xl gap-1.5 shadow-sm"
-                      >
-                        <Star className="w-4 h-4" /> Rate & Review Place
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {/* Safety Rating Button - Only available if place is saved in user's My Places */}
+                        {place.inMyPlaces ? (
+                          <button
+                            onClick={() => {
+                              if (!currentUser) {
+                                showToast("⚠️ Please log in to rate safety.");
+                                return;
+                              }
+                              setRatingModalPlace(place);
+                              setSafetyRatingScore(Math.round(safety));
+                              setSafetyReviewText("");
+                            }}
+                            className="btn btn-xs btn-outline btn-warning font-bold rounded-xl gap-1 shadow-sm"
+                            title="Verified visitor: Rate safety score"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" /> Rate Safety
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              showToast("⚠️ You can only rate safety for places saved in your 'My Places'.");
+                            }}
+                            className="btn btn-xs btn-ghost text-[10px] text-base-content/40 hover:text-warning font-bold gap-1 opacity-60"
+                            title="Only travelers who have this spot in 'My Places' can rate safety"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 opacity-40" />
+                            <span>Rate Safety</span>
+                          </button>
+                        )}
 
-                      {isUnsafe && (
-                        <span className="text-[10px] text-error font-bold flex items-center gap-1">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Exercise caution!
-                        </span>
-                      )}
+                        {/* Report Button */}
+                        <button
+                          onClick={() => setReportModalPlace(place)}
+                          className="btn btn-xs btn-ghost btn-circle text-base-content/40 hover:text-error"
+                          title="Report this place"
+                        >
+                          <Flag className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
                     </div>
 
-                    {/* Comments Section */}
+                    {/* Comments Feed Section */}
                     <div className="space-y-3 pt-3 border-t border-base-200">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-base-content/50 flex items-center gap-1">
-                        <MessageSquare className="w-3.5 h-3.5" /> Traveler Comments ({place.comments?.length || 0})
+                        <MessageSquare className="w-3.5 h-3.5" /> Comments ({place.commentsCount || (place.comments || []).length})
                       </span>
 
-                      {/* Comment Feed */}
+                      {/* Comments List */}
                       {place.comments && place.comments.length > 0 && (
-                        <div className="bg-base-200/50 rounded-xl p-3 space-y-2.5 max-h-48 overflow-y-auto border border-base-200">
-                          {place.comments.map((comment) => (
-                            <div key={comment.id} className="flex gap-2 text-xs">
-                              <Link to={`/profile/${comment.user}`}>
-                                <img src={comment.avatar} alt={comment.user} className="w-6 h-6 rounded-full object-cover border border-base-300 mt-0.5" />
-                              </Link>
-                              <div className="flex-1 bg-base-100 p-2 rounded-lg border border-base-300">
-                                <div className="flex justify-between items-center mb-0.5">
-                                  <Link to={`/profile/${comment.user}`} className="font-bold text-primary hover:underline">
-                                    @{comment.user}
-                                  </Link>
-                                  <span className="text-[9px] text-base-content/40">{comment.time}</span>
+                        <div className="bg-base-200/50 rounded-2xl p-3 space-y-2 max-h-36 overflow-y-auto border border-base-200">
+                          {place.comments.map((comment, cIdx) => (
+                            <div key={comment.id || cIdx} className="flex gap-2 text-xs">
+                              <img 
+                                src={comment.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${comment.user}`} 
+                                alt={comment.user} 
+                                className="w-6 h-6 rounded-full object-cover bg-black/20 shrink-0 mt-0.5" 
+                              />
+                              <div className="flex-1 bg-base-100 p-2 rounded-xl border border-base-300">
+                                <div className="flex justify-between items-center text-[10px] font-bold text-base-content/60 mb-0.5">
+                                  <span>@{comment.user}</span>
+                                  <span>{comment.time || "Recent"}</span>
                                 </div>
-                                <p className="text-[11px] text-base-content/85">{comment.text}</p>
+                                <p className="text-xs text-base-content/90 font-medium m-0 leading-tight">
+                                  {comment.text}
+                                </p>
                               </div>
                             </div>
                           ))}
                         </div>
                       )}
 
-                      {/* Inline Comment Input */}
-                      <form onSubmit={(e) => handleInlineComment(place.id, e)} className="flex gap-2">
-                        <input 
-                          type="text" 
-                          placeholder="Share your experience or tip about this place..." 
-                          className="input input-sm input-bordered flex-1 rounded-lg text-xs"
-                          value={commentInputs[place.id] || ""}
-                          onChange={(e) => setCommentInputs({ ...commentInputs, [place.id]: e.target.value })}
-                        />
-                        <button type="submit" className="btn btn-sm btn-ghost btn-circle">
-                          <Send className="w-4 h-4 text-primary" />
-                        </button>
-                      </form>
+                      {/* Add Comment Input Form */}
+                      {currentUser ? (
+                        <form onSubmit={(e) => handleInlineComment(pId, e)} className="flex gap-1.5 pt-1">
+                          <input 
+                            type="text" 
+                            placeholder="Share safety tip or local update..." 
+                            className="input input-xs input-bordered w-full rounded-xl text-xs py-3" 
+                            value={commentInputs[pId] || ""}
+                            onChange={(e) => setCommentInputs(prev => ({ ...prev, [pId]: e.target.value }))}
+                          />
+                          <button 
+                            type="submit" 
+                            disabled={!commentInputs[pId]?.trim()} 
+                            className="btn btn-xs btn-primary text-slate-900 rounded-xl px-2.5 font-bold shrink-0"
+                          >
+                            <Send className="w-3 h-3" />
+                          </button>
+                        </form>
+                      ) : (
+                        <p className="text-[11px] text-base-content/50 italic text-center">
+                          Log in to leave comments and safety tips.
+                        </p>
+                      )}
 
                     </div>
 
                   </div>
+
                 </div>
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      )}
 
-      {/* Rate & Safety Report Modal */}
+      {/* Modal 1: Add / Record Place Location */}
+      <AddPlaceLocationModal
+        isOpen={isAddLocationOpen}
+        onClose={() => setIsAddLocationOpen(false)}
+        currentUser={currentUser}
+        onPlaceAdded={() => {
+          showToast("📍 Spot recorded in 'My Places'! Head to your profile to edit and publish.");
+          loadPlaces();
+        }}
+      />
+
+      {/* Modal 2: Verified Safety Rating */}
       {ratingModalPlace && (
-        <div className="modal modal-open">
-          <div className="modal-box rounded-2xl max-w-md border border-base-300">
-            <div className="flex justify-between items-center border-b border-base-300 pb-3 mb-4">
-              <h3 className="font-black text-lg m-0 flex items-center gap-2">
-                <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" /> Rate {ratingModalPlace.name}
-              </h3>
-              <button onClick={() => setRatingModalPlace(null)} className="btn btn-sm btn-circle btn-ghost">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="card w-full max-w-md bg-base-100 border border-base-200 shadow-2xl rounded-3xl overflow-hidden p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-base-200 pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                <h3 className="font-black text-base m-0">Rate Place Safety</h3>
+              </div>
+              <button onClick={() => setRatingModalPlace(null)} className="btn btn-ghost btn-xs btn-circle">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitRatingModal} className="space-y-5">
-              
-              {/* Star Rating selector */}
-              <div className="form-control text-center space-y-2">
-                <label className="label-text font-bold text-xs">Your Rating (1 to 5 Stars)</label>
-                <div className="flex justify-center gap-2">
+            <p className="text-xs text-base-content/70">
+              Your verified rating helps travelers know the security and safety level of <strong>{ratingModalPlace.name || ratingModalPlace.place_name}</strong>.
+            </p>
+
+            <form onSubmit={handleSubmitSafetyRating} className="space-y-4">
+              <div className="card bg-base-200/60 p-4 rounded-2xl space-y-2 text-center">
+                <span className="text-xs font-bold text-base-content/70">Safety Rating Level</span>
+                <div className="flex items-center justify-center gap-2">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
-                      key={star}
                       type="button"
-                      onClick={() => setUserRating(star)}
-                      className={`btn btn-circle btn-sm ${
-                        star <= userRating ? "btn-warning text-slate-900 scale-110" : "btn-ghost border-base-300"
+                      key={star}
+                      onClick={() => setSafetyRatingScore(star)}
+                      className={`btn btn-sm btn-circle ${
+                        safetyRatingScore >= star ? "btn-warning" : "btn-ghost"
                       }`}
                     >
-                      ★
+                      <Star className={`w-4 h-4 ${safetyRatingScore >= star ? "fill-current" : ""}`} />
                     </button>
                   ))}
                 </div>
-                <span className="text-xs font-bold text-yellow-600 block">{userRating} / 5 Stars</span>
+                <span className="text-xs font-black text-amber-500">
+                  {safetyRatingScore >= 4.5 ? "Very Safe (Tourist Friendly)" : safetyRatingScore >= 3.5 ? "Moderate Safety" : "Exercise Caution"}
+                </span>
               </div>
 
-              {/* Safety Report Button */}
-              <div className="form-control p-3 bg-base-200 border border-base-300 rounded-xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-base-content flex items-center gap-1.5">
-                    <ShieldAlert className="w-4 h-4 text-error" /> Mark Place as Unsafe
-                  </span>
-                  <input 
-                    type="checkbox" 
-                    className="toggle toggle-error toggle-sm"
-                    checked={markUnsafe}
-                    onChange={(e) => setMarkUnsafe(e.target.checked)}
-                  />
-                </div>
-                <p className="text-[10px] text-base-content/60 leading-snug">
-                  If this area has safety hazards, high water risks, or crime alerts, checking this will increment the public unsafe report count and mark it on the map.
-                </p>
-              </div>
-
-              {/* Comment text area */}
-              <div className="form-control">
-                <label className="label py-0.5"><span className="label-text text-xs font-bold">Review Comment</span></label>
-                <textarea 
-                  rows="3"
-                  placeholder="Share details of your experience, safety tips, or things to watch out for..." 
-                  className="textarea textarea-bordered w-full text-xs rounded-lg"
-                  value={ratingComment}
-                  onChange={(e) => setRatingComment(e.target.value)}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-base-content/80">Safety Review Note (Optional)</label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Well lit at night, local police booth nearby, safe for solo travelers..."
+                  value={safetyReviewText}
+                  onChange={(e) => setSafetyReviewText(e.target.value)}
+                  className="textarea textarea-bordered w-full rounded-2xl text-xs"
                 />
               </div>
 
-              {/* Submit Buttons */}
-              <div className="modal-action border-t border-base-300 pt-3">
-                <button type="button" onClick={() => setRatingModalPlace(null)} className="btn btn-sm btn-ghost rounded-lg text-xs">
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setRatingModalPlace(null)} className="btn btn-sm btn-ghost rounded-xl font-bold">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-sm btn-primary text-primary-content font-bold rounded-lg text-xs">
-                  Submit Rating & Report
+                <button type="submit" className="btn btn-sm btn-primary text-slate-900 font-bold rounded-xl shadow-md">
+                  Submit Safety Rating (+15 Pts)
                 </button>
               </div>
-
             </form>
           </div>
         </div>
       )}
 
-      {/* Add New Place Modal */}
-      {isAddPlaceOpen && (
-        <div className="modal modal-open">
-          <div className="modal-box rounded-2xl max-w-lg border border-base-300">
-            <div className="flex justify-between items-center border-b border-base-300 pb-3 mb-4">
-              <h3 className="font-black text-lg m-0 flex items-center gap-2">
-                <Compass className="w-5 h-5 text-primary" /> Add Tourist Destination
-              </h3>
-              <button onClick={() => setIsAddPlaceOpen(false)} className="btn btn-sm btn-circle btn-ghost">
+      {/* Modal 3: Report Place */}
+      {reportModalPlace && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="card w-full max-w-md bg-base-100 border border-base-200 shadow-2xl rounded-3xl overflow-hidden p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-base-200 pb-3">
+              <div className="flex items-center gap-2 text-error">
+                <AlertTriangle className="w-5 h-5" />
+                <h3 className="font-black text-base m-0">Report Place</h3>
+              </div>
+              <button onClick={() => setReportModalPlace(null)} className="btn btn-ghost btn-xs btn-circle">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreatePlace} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="form-control">
-                  <label className="label py-0.5"><span className="label-text text-xs font-bold">Place Name</span></label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. Inani Beach, Jaflong" 
-                    className="input input-sm input-bordered w-full rounded-lg text-xs" 
-                    value={newPlaceName}
-                    onChange={(e) => setNewPlaceName(e.target.value)}
-                    required
-                  />
-                </div>
+            <p className="text-xs text-base-content/70">
+              Report incorrect location coordinates, safety hazards, or inappropriate photos for <strong>{reportModalPlace.name || reportModalPlace.place_name}</strong>.
+            </p>
 
-                <div className="form-control">
-                  <label className="label py-0.5"><span className="label-text text-xs font-bold">Category</span></label>
-                  <select 
-                    className="select select-sm select-bordered w-full rounded-lg text-xs"
-                    value={newPlaceCategory}
-                    onChange={(e) => setNewPlaceCategory(e.target.value)}
-                  >
-                    <option value="Beach">Beach</option>
-                    <option value="Hills">Hills</option>
-                    <option value="Nature">Nature</option>
-                    <option value="Island">Island</option>
-                    <option value="Forest">Forest</option>
-                    <option value="Historic">Historic</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-control">
-                <label className="label py-0.5"><span className="label-text text-xs font-bold">Image URL</span></label>
-                <input 
-                  type="url" 
-                  placeholder="https://images.unsplash.com/photo-..." 
-                  className="input input-sm input-bordered w-full rounded-lg text-xs" 
-                  value={newPlaceImage}
-                  onChange={(e) => setNewPlaceImage(e.target.value)}
-                />
-              </div>
-
-              <div className="form-control">
-                <label className="label py-0.5"><span className="label-text text-xs font-bold">Description</span></label>
-                <textarea 
-                  rows="2"
-                  placeholder="Short description of this tourist location..." 
-                  className="textarea textarea-bordered w-full text-xs rounded-lg" 
-                  value={newPlaceDesc}
-                  onChange={(e) => setNewPlaceDesc(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="form-control">
-                <label className="label py-0.5">
-                  <span className="label-text text-xs font-bold flex items-center gap-1 text-amber-500">
-                    <Sparkles className="w-3.5 h-3.5" /> Things Worth Exploring (Caption)
-                  </span>
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Secret waterfalls, sunset view points, grilled fish..." 
-                  className="input input-sm input-bordered w-full rounded-lg text-xs" 
-                  value={newPlaceCaption}
-                  onChange={(e) => setNewPlaceCaption(e.target.value)}
-                />
-              </div>
-
-              <div className="modal-action border-t border-base-300 pt-3">
-                <button type="button" onClick={() => setIsAddPlaceOpen(false)} className="btn btn-sm btn-ghost rounded-lg text-xs">
+            <form onSubmit={handleSubmitReport} className="space-y-3">
+              <textarea
+                required
+                rows={3}
+                placeholder="Reason for report (e.g. Danger zone without warning, private property, inaccurate coordinates)..."
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                className="textarea textarea-bordered w-full rounded-2xl text-xs"
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setReportModalPlace(null)} className="btn btn-sm btn-ghost rounded-xl font-bold">
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-sm btn-primary text-primary-content font-bold rounded-lg text-xs">
-                  Add Destination
+                <button type="submit" className="btn btn-sm btn-error text-white font-bold rounded-xl">
+                  Submit Report
                 </button>
               </div>
-
             </form>
           </div>
         </div>

@@ -140,8 +140,5 @@ A tour package builder that creates packages from given resources.
 
 ## License
 
-<<<<<<< HEAD
-> Coming Soon
-=======
 > Add license information here.
->>>>>>> 11546ce7a524be7e9d461fadcaac8e7480e68bb4
+

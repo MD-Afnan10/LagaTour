@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import { initDatabase } from "./config/db.js";
 import postRoutes from "./routes/postRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import placeRoutes from "./routes/placeRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import { initSocket } from "./services/socketService.js";
 
@@ -40,7 +41,9 @@ app.get("/api/health", (req, res) => {
 // API Routes
 app.use("/api", postRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/places", placeRoutes);
 app.use("/api/chats", chatRoutes);
+
 
 // Error Handling Middleware
 app.use((err, req, res, next) => {
