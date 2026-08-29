@@ -281,7 +281,6 @@ export const api = {
     return await handleResponse(res);
   },
 
-<<<<<<< HEAD
   // ===================== CHAT & MESSAGING =====================
 
   /**
@@ -339,7 +338,8 @@ export const api = {
     });
     const data = await handleResponse(res);
     return data.message;
-=======
+  },
+
   // ===================== PLACE TRACKING & "MY PLACES" =====================
 
   /**
@@ -495,9 +495,9 @@ export const api = {
       body: JSON.stringify({ userId })
     });
     return await handleResponse(res);
->>>>>>> f17c40d2186caacaf34df922bfa02942bf57722a
   }
 };
 
 export default api;
+
 
