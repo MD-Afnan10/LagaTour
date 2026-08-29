@@ -1,14 +1,23 @@
+import http from "http";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { initDatabase } from "./config/db.js";
 import postRoutes from "./routes/postRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
+import { initSocket } from "./services/socketService.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Create HTTP Server (supports both Express REST APIs and Socket.io WebSockets)
+const server = http.createServer(app);
+
+// Initialize Socket.io
+initSocket(server);
 
 // Middleware
 app.use(cors({
@@ -23,7 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.get("/api/health", (req, res) => {
   res.json({
     status: "ok",
-    service: "LagaTour Backend API",
+    service: "LagaTour Backend API with Real-time WebSockets",
     timestamp: new Date().toISOString()
   });
 });
@@ -31,6 +40,7 @@ app.get("/api/health", (req, res) => {
 // API Routes
 app.use("/api", postRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/chats", chatRoutes);
 
 // Error Handling Middleware
 app.use((err, req, res, next) => {
@@ -51,8 +61,8 @@ async function startServer() {
       console.warn("⚠️ Warning: Could not connect to MySQL database at startup. Backend will keep running; please verify your MySQL server status and .env settings.", dbErr.message);
     }
 
-    app.listen(PORT, () => {
-      console.log(`🚀 LagaTour Node.js Server running on port ${PORT}`);
+    server.listen(PORT, () => {
+      console.log(`🚀 LagaTour Node.js Server & Socket.io running on port ${PORT}`);
       console.log(`📡 Healthcheck available at: http://localhost:${PORT}/api/health`);
     });
   } catch (error) {
@@ -61,3 +71,4 @@ async function startServer() {
 }
 
 startServer();
+

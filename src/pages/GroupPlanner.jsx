@@ -357,12 +357,12 @@ export default function GroupPlanner() {
   const perMemberShare = selectedGroup?.members?.length > 0 ? Math.round(totalSpent / selectedGroup.members.length) : 0;
 
   return (
-    <div className="container mx-auto px-4 md:px-8 py-6 max-w-6xl space-y-8">
+    <div className="container max-w-6xl px-4 py-6 mx-auto space-y-8 md:px-8">
       
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-base-100 border border-base-200 p-6 rounded-3xl shadow-sm">
+      <div className="flex flex-col gap-4 p-6 border shadow-sm md:flex-row md:justify-between md:items-center bg-base-100 border-base-200 rounded-3xl">
         <div>
-          <h1 className="text-3xl font-black tracking-tight mb-1 text-base-content flex items-center gap-2">
+          <h1 className="flex items-center gap-2 mb-1 text-3xl font-black tracking-tight text-base-content">
             <Users className="w-8 h-8 text-primary" /> Group Expeditions
           </h1>
           <p className="text-xs sm:text-sm text-base-content/70">
@@ -371,7 +371,7 @@ export default function GroupPlanner() {
         </div>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="btn btn-primary text-white font-bold rounded-2xl shadow-lg border-none capitalize gap-2 px-5 shrink-0 self-start md:self-auto"
+          className="self-start gap-2 px-5 font-bold text-white capitalize border-none shadow-lg btn btn-primary rounded-2xl shrink-0 md:self-auto"
         >
           <Plus className="w-5 h-5" /> Plan Expedition
         </button>
@@ -385,28 +385,28 @@ export default function GroupPlanner() {
           
           {/* SECTION A: MY EXPEDITIONS (Expeditions the user belongs to) */}
           <div className="space-y-4">
-            <div className="flex justify-between items-center border-b border-base-200 pb-3">
+            <div className="flex items-center justify-between pb-3 border-b border-base-200">
               <div>
-                <h2 className="text-xl font-black text-base-content flex items-center gap-2">
+                <h2 className="flex items-center gap-2 text-xl font-black text-base-content">
                   <ShieldCheck className="w-5 h-5 text-success" /> My Expeditions
                 </h2>
                 <p className="text-xs text-base-content/60">Expeditions you are organizing or currently participating in.</p>
               </div>
-              <span className="badge badge-success text-white font-bold px-3 py-1 text-xs">
+              <span className="px-3 py-1 text-xs font-bold text-white badge badge-success">
                 {myExpeditions.length} Joined / Organized
               </span>
             </div>
 
             {myExpeditions.length === 0 ? (
-              <div className="text-center py-10 bg-base-100 rounded-3xl border border-dashed border-base-300 p-6 space-y-2">
-                <Compass className="w-10 h-10 text-primary mx-auto opacity-50" />
-                <h3 className="font-bold text-sm text-base-content">You haven't joined any expedition yet</h3>
-                <p className="text-xs text-base-content/60 max-w-sm mx-auto">
+              <div className="p-6 py-10 space-y-2 text-center border border-dashed bg-base-100 rounded-3xl border-base-300">
+                <Compass className="w-10 h-10 mx-auto opacity-50 text-primary" />
+                <h3 className="text-sm font-bold text-base-content">You haven't joined any expedition yet</h3>
+                <p className="max-w-sm mx-auto text-xs text-base-content/60">
                   Browse available expeditions below and send a join request, or create your own group expedition!
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
                 {myExpeditions.map(group => {
                   const isOrganizer = group.organizer?.id === currentUser?.id || 
                                       group.organizer?.username === currentUser?.username || 
@@ -415,11 +415,11 @@ export default function GroupPlanner() {
                   return (
                     <div 
                       key={group.id} 
-                      className="card bg-base-100 border-2 border-primary/40 p-5 rounded-3xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                      className="flex flex-col justify-between p-5 space-y-4 transition-all border-2 shadow-sm card bg-base-100 border-primary/40 rounded-3xl hover:shadow-md"
                     >
                       <div className="space-y-3">
-                        <div className="flex justify-between items-start gap-2">
-                          <h3 className="font-black text-base text-base-content leading-snug">{group.title}</h3>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-base font-black leading-snug text-base-content">{group.title}</h3>
                           {isOrganizer ? (
                             <span className="badge badge-warning font-bold text-[10px] text-slate-900 shrink-0 gap-1 shadow-sm">
                               Organizer 👑
@@ -432,7 +432,7 @@ export default function GroupPlanner() {
                         </div>
 
                         {/* Visual Tag for Member Status */}
-                        <div className="bg-primary/10 border border-primary/20 p-2 rounded-2xl flex items-center gap-2">
+                        <div className="flex items-center gap-2 p-2 border bg-primary/10 border-primary/20 rounded-2xl">
                           <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
                           <span className="text-[11px] font-bold text-primary">
                             {isOrganizer ? "You are organizing this expedition" : "You are an active member of this group"}
@@ -451,15 +451,15 @@ export default function GroupPlanner() {
                         </div>
                       </div>
 
-                      <div className="pt-3 border-t border-base-200 flex justify-between items-center">
-                        <div className="flex items-center gap-1 text-xs text-base-content/70 font-bold">
+                      <div className="flex items-center justify-between pt-3 border-t border-base-200">
+                        <div className="flex items-center gap-1 text-xs font-bold text-base-content/70">
                           <Users className="w-3.5 h-3.5 text-primary" />
                           <span>{group.members?.length || 1} / {group.maxMembers} Members</span>
                         </div>
 
                         <button 
                           onClick={() => setSelectedGroupId(group.id)}
-                          className="btn btn-sm btn-primary text-white font-bold rounded-xl gap-1 shadow"
+                          className="gap-1 font-bold text-white shadow btn btn-sm btn-primary rounded-xl"
                         >
                           Open Workspace <ArrowRight className="w-3.5 h-3.5" />
                         </button>
@@ -473,25 +473,25 @@ export default function GroupPlanner() {
           </div>
 
           {/* SECTION B: EXPLORE EXPEDITIONS (Expeditions the user is NOT part of) */}
-          <div className="space-y-4 pt-4">
-            <div className="flex justify-between items-center border-b border-base-200 pb-3">
+          <div className="pt-4 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-base-200">
               <div>
-                <h2 className="text-xl font-black text-base-content flex items-center gap-2">
+                <h2 className="flex items-center gap-2 text-xl font-black text-base-content">
                   <Compass className="w-5 h-5 text-primary" /> Explore Available Expeditions
                 </h2>
                 <p className="text-xs text-base-content/60">Discover open group trips created by other travelers and request to join.</p>
               </div>
-              <span className="badge badge-outline font-bold px-3 py-1 text-xs">
+              <span className="px-3 py-1 text-xs font-bold badge badge-outline">
                 {exploreExpeditions.length} Available
               </span>
             </div>
 
             {exploreExpeditions.length === 0 ? (
-              <div className="text-center py-10 bg-base-100 rounded-3xl border border-dashed border-base-300 p-6">
+              <div className="p-6 py-10 text-center border border-dashed bg-base-100 rounded-3xl border-base-300">
                 <p className="text-xs text-base-content/60">No additional open expeditions available to join right now.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
                 {exploreExpeditions.map(group => {
                   const hasRequested = group.requests?.some(r => r.user?.id === currentUser?.id || r.user?.username === currentUser?.username);
                   const isFull = (group.members?.length || 0) >= group.maxMembers;
@@ -499,27 +499,27 @@ export default function GroupPlanner() {
                   return (
                     <div 
                       key={group.id} 
-                      className="card bg-base-100 border border-base-200 p-5 rounded-3xl shadow-sm hover:border-primary/50 transition-all flex flex-col justify-between space-y-4"
+                      className="flex flex-col justify-between p-5 space-y-4 transition-all border shadow-sm card bg-base-100 border-base-200 rounded-3xl hover:border-primary/50"
                     >
                       {/* Title & Geotag */}
                       <div className="space-y-2">
-                        <h3 className="font-black text-base text-base-content leading-snug">{group.title}</h3>
+                        <h3 className="text-base font-black leading-snug text-base-content">{group.title}</h3>
                         
                         {/* Organizer Profile Card */}
-                        <div className="flex items-center gap-2 bg-base-200/60 p-2 rounded-2xl border border-base-200">
+                        <div className="flex items-center gap-2 p-2 border bg-base-200/60 rounded-2xl border-base-200">
                           <img 
                             src={group.organizer?.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=organizer"} 
                             alt={group.organizer?.name} 
-                            className="w-8 h-8 rounded-full object-cover border border-base-300"
+                            className="object-cover w-8 h-8 border rounded-full border-base-300"
                           />
                           <div className="min-w-0">
-                            <span className="font-bold text-xs text-base-content block truncate">{group.organizer?.name}</span>
+                            <span className="block text-xs font-bold truncate text-base-content">{group.organizer?.name}</span>
                             <span className="text-[10px] text-base-content/50 block font-mono">Creator • @{group.organizer?.username || "traveler"}</span>
                           </div>
                         </div>
 
                         {/* Details */}
-                        <div className="space-y-1 text-xs text-base-content/75 pt-1">
+                        <div className="pt-1 space-y-1 text-xs text-base-content/75">
                           <div className="flex items-center gap-1.5 font-medium">
                             <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
                             <span>{group.destination}</span>
@@ -536,14 +536,14 @@ export default function GroupPlanner() {
                       </div>
 
                       {/* Member Capacity Progress */}
-                      <div className="space-y-1 pt-2 border-t border-base-200">
+                      <div className="pt-2 space-y-1 border-t border-base-200">
                         <div className="flex justify-between items-center text-[11px] font-bold text-base-content/75">
                           <span>Members Capacity</span>
                           <span>{group.members?.length || 1} / {group.maxMembers} Joined</span>
                         </div>
-                        <div className="w-full bg-base-200 h-2 rounded-full overflow-hidden">
+                        <div className="w-full h-2 overflow-hidden rounded-full bg-base-200">
                           <div 
-                            className="bg-primary h-full transition-all" 
+                            className="h-full transition-all bg-primary" 
                             style={{ width: `${((group.members?.length || 1) / group.maxMembers) * 100}%` }}
                           />
                         </div>
@@ -553,7 +553,7 @@ export default function GroupPlanner() {
                       <div className="flex gap-2 pt-1">
                         <button 
                           onClick={() => setSelectedGroupId(group.id)}
-                          className="btn btn-sm btn-outline flex-1 rounded-xl text-xs font-bold"
+                          className="flex-1 text-xs font-bold btn btn-sm btn-outline rounded-xl"
                         >
                           View Details
                         </button>
@@ -569,7 +569,7 @@ export default function GroupPlanner() {
                         ) : (
                           <button 
                             onClick={() => handleJoinRequest(group.id)}
-                            className="btn btn-sm btn-primary text-white font-bold rounded-xl text-xs px-3 shrink-0 shadow"
+                            className="px-3 text-xs font-bold text-white shadow btn btn-sm btn-primary rounded-xl shrink-0"
                           >
                             Request Join
                           </button>
@@ -594,7 +594,7 @@ export default function GroupPlanner() {
           <div className="flex items-center justify-between">
             <button 
               onClick={() => setSelectedGroupId(null)}
-              className="btn btn-ghost btn-sm rounded-xl gap-2 font-bold text-xs"
+              className="gap-2 text-xs font-bold btn btn-ghost btn-sm rounded-xl"
             >
               <ArrowLeft className="w-4 h-4" /> Back to All Expeditions
             </button>
@@ -605,25 +605,25 @@ export default function GroupPlanner() {
 
           {/* IF USER IS A MEMBER: SHOW FULL WORKSPACE CONSOLE */}
           {isSelectedGroupMember ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               
               {/* Left / Center: Active Workspace Console (Takes 2 Cols) */}
-              <div className="lg:col-span-2 flex flex-col gap-6">
+              <div className="flex flex-col gap-6 lg:col-span-2">
                 
                 {/* Active Group Header */}
-                <div className="card bg-base-100 border border-base-200 p-5 md:p-6 shadow-sm rounded-3xl space-y-4">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="p-5 space-y-4 border shadow-sm card bg-base-100 border-base-200 md:p-6 rounded-3xl">
+                  <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                     <div>
                       <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Active Expedition Workspace</span>
                       <h2 className="text-2xl font-black text-base-content mt-0.5 mb-1">{selectedGroup.title}</h2>
-                      <p className="text-xs text-base-content/70 flex items-center gap-2">
+                      <p className="flex items-center gap-2 text-xs text-base-content/70">
                         <MapPin className="w-3.5 h-3.5 text-primary" /> {selectedGroup.destination} &nbsp;•&nbsp; 
                         <Calendar className="w-3.5 h-3.5 text-info" /> {selectedGroup.travelDate}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2 bg-base-200 py-2 px-3 rounded-2xl border border-base-300">
+                    <div className="flex items-center gap-2 px-3 py-2 border bg-base-200 rounded-2xl border-base-300">
                       <Users className="w-4 h-4 text-primary" />
-                      <div className="text-left leading-none">
+                      <div className="leading-none text-left">
                         <span className="text-[10px] text-base-content/60 block">Members</span>
                         <span className="text-xs font-bold">{selectedGroup.members?.length || 1} / {selectedGroup.maxMembers}</span>
                       </div>
@@ -631,27 +631,27 @@ export default function GroupPlanner() {
                   </div>
 
                   {/* Summary Details Cards */}
-                  <div className="grid grid-cols-3 gap-2 bg-base-200/50 p-3 rounded-2xl border border-base-200 text-xs">
+                  <div className="grid grid-cols-3 gap-2 p-3 text-xs border bg-base-200/50 rounded-2xl border-base-200">
                     <div>
                       <span className="text-[10px] text-base-content/50 block">Est. Budget</span>
                       <span className="font-bold text-primary">{selectedGroup.estimatedBudget} BDT / hd</span>
                     </div>
                     <div>
                       <span className="text-[10px] text-base-content/50 block">Transport</span>
-                      <span className="font-semibold text-base-content/90 truncate block">{selectedGroup.transportation}</span>
+                      <span className="block font-semibold truncate text-base-content/90">{selectedGroup.transportation}</span>
                     </div>
                     <div>
                       <span className="text-[10px] text-base-content/50 block">Accommodation</span>
-                      <span className="font-semibold text-base-content/90 truncate block">{selectedGroup.accommodationPlan || selectedGroup.accommodation}</span>
+                      <span className="block font-semibold truncate text-base-content/90">{selectedGroup.accommodationPlan || selectedGroup.accommodation}</span>
                     </div>
                   </div>
 
                   {/* Members Avatar List */}
                   <div className="flex items-center gap-2 pt-2 border-t border-base-200">
-                    <span className="text-xs font-bold text-base-content/60 mr-2">Expedition Team:</span>
-                    <div className="avatar-group -space-x-4 rtl:space-x-reverse">
+                    <span className="mr-2 text-xs font-bold text-base-content/60">Expedition Team:</span>
+                    <div className="-space-x-4 avatar-group rtl:space-x-reverse">
                       {selectedGroup.members?.map((m, idx) => (
-                        <Link key={idx} to={`/profile/${m.id || m.username}`} className="avatar border-2 border-base-100 w-8 h-8 rounded-full tooltip hover:scale-110 transition-transform" data-tip={m.name}>
+                        <Link key={idx} to={`/profile/${m.id || m.username}`} className="w-8 h-8 transition-transform border-2 rounded-full avatar border-base-100 tooltip hover:scale-110" data-tip={m.name}>
                           <img src={m.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=user"} alt={m.name} />
                         </Link>
                       ))}
@@ -663,7 +663,7 @@ export default function GroupPlanner() {
                 <div className="card bg-base-100 border border-base-200 rounded-3xl overflow-hidden shadow-sm flex-1 min-h-[400px]">
                   
                   {/* Tabs */}
-                  <div className="tabs tabs-boxed rounded-none bg-base-200 border-b border-base-300 p-1 flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 p-1 border-b rounded-none tabs tabs-boxed bg-base-200 border-base-300">
                     <button 
                       onClick={() => setActiveTab("checklist")} 
                       className={`tab tab-sm font-bold capitalize gap-1.5 ${activeTab === "checklist" ? "tab-active bg-primary text-white font-black" : ""}`}
@@ -691,12 +691,12 @@ export default function GroupPlanner() {
                   </div>
 
                   {/* Tab Contents */}
-                  <div className="p-4 md:p-6 flex-1 flex flex-col justify-between">
+                  <div className="flex flex-col justify-between flex-1 p-4 md:p-6">
                     
                     {/* Tab: CHECKLIST */}
                     {activeTab === "checklist" && (
                       <div className="space-y-4">
-                        <div className="flex justify-between items-center pb-2 border-b border-base-200">
+                        <div className="flex items-center justify-between pb-2 border-b border-base-200">
                           <span className="text-xs font-bold text-base-content/60">Collaborative Preparation Tasks</span>
                           <span className="text-xs font-bold text-primary">
                             {selectedGroup.checklist?.filter(t => t.completed).length || 0} / {selectedGroup.checklist?.length || 0} Completed
@@ -715,7 +715,7 @@ export default function GroupPlanner() {
                                   type="checkbox" 
                                   checked={task.completed} 
                                   onChange={() => {}}
-                                  className="checkbox checkbox-primary checkbox-xs rounded" 
+                                  className="rounded checkbox checkbox-primary checkbox-xs" 
                                 />
                                 <span className="text-xs font-semibold">{task.task}</span>
                               </div>
@@ -727,17 +727,17 @@ export default function GroupPlanner() {
                         </div>
 
                         {/* Add Checklist task */}
-                        <form onSubmit={handleAddTask} className="flex flex-col sm:flex-row gap-2 pt-4 border-t border-base-200">
+                        <form onSubmit={handleAddTask} className="flex flex-col gap-2 pt-4 border-t sm:flex-row border-base-200">
                           <input 
                             type="text" 
                             placeholder="Add task details..." 
-                            className="input input-sm input-bordered flex-1 rounded-xl text-xs bg-base-100" 
+                            className="flex-1 text-xs input input-sm input-bordered rounded-xl bg-base-100" 
                             value={newTaskText}
                             onChange={(e) => setNewTaskText(e.target.value)}
                             required
                           />
                           <select 
-                            className="select select-sm select-bordered rounded-xl text-xs"
+                            className="text-xs select select-sm select-bordered rounded-xl"
                             value={newTaskAssignee}
                             onChange={(e) => setNewTaskAssignee(e.target.value)}
                           >
@@ -746,7 +746,7 @@ export default function GroupPlanner() {
                               <option key={idx} value={m.name}>{m.name}</option>
                             ))}
                           </select>
-                          <button type="submit" className="btn btn-sm btn-primary text-white font-bold rounded-xl text-xs">Add Task</button>
+                          <button type="submit" className="text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Add Task</button>
                         </form>
                       </div>
                     )}
@@ -754,7 +754,7 @@ export default function GroupPlanner() {
                     {/* Tab: BUDGET & SPLITS */}
                     {activeTab === "budget" && (
                       <div className="space-y-4">
-                        <div className="grid grid-cols-3 gap-2 bg-primary/10 border border-primary/20 p-3 rounded-2xl text-center">
+                        <div className="grid grid-cols-3 gap-2 p-3 text-center border bg-primary/10 border-primary/20 rounded-2xl">
                           <div className="leading-tight">
                             <span className="text-[10px] text-base-content/60 block">Total Spent</span>
                             <span className="text-sm font-black text-primary">{totalSpent} BDT</span>
@@ -770,29 +770,29 @@ export default function GroupPlanner() {
                         </div>
 
                         <div className="space-y-2">
-                          <span className="text-xs font-bold text-base-content/60 block">Expense Ledger</span>
+                          <span className="block text-xs font-bold text-base-content/60">Expense Ledger</span>
                           {selectedGroup.expenses?.length === 0 ? (
-                            <div className="text-center py-6 text-xs text-base-content/50 border border-dashed border-base-300 rounded-2xl">
+                            <div className="py-6 text-xs text-center border border-dashed text-base-content/50 border-base-300 rounded-2xl">
                               No expenses logged yet. Add one below!
                             </div>
                           ) : (
                             selectedGroup.expenses?.map(exp => (
-                              <div key={exp.id} className="flex justify-between items-center p-3 rounded-2xl border border-base-300 bg-base-100">
+                              <div key={exp.id} className="flex items-center justify-between p-3 border rounded-2xl border-base-300 bg-base-100">
                                 <div>
-                                  <h4 className="font-bold text-xs">{exp.title}</h4>
+                                  <h4 className="text-xs font-bold">{exp.title}</h4>
                                   <span className="text-[10px] text-base-content/50">Paid by: {exp.paidBy} &nbsp;•&nbsp; {exp.date}</span>
                                 </div>
-                                <span className="font-black text-sm text-primary">{exp.amount} BDT</span>
+                                <span className="text-sm font-black text-primary">{exp.amount} BDT</span>
                               </div>
                             ))
                           )}
                         </div>
 
-                        <form onSubmit={handleAddExpense} className="flex flex-col sm:flex-row gap-2 pt-4 border-t border-base-200">
+                        <form onSubmit={handleAddExpense} className="flex flex-col gap-2 pt-4 border-t sm:flex-row border-base-200">
                           <input 
                             type="text" 
                             placeholder="e.g. Resort Deposit" 
-                            className="input input-sm input-bordered flex-1 rounded-xl text-xs" 
+                            className="flex-1 text-xs input input-sm input-bordered rounded-xl" 
                             value={newExpTitle}
                             onChange={(e) => setNewExpTitle(e.target.value)}
                             required
@@ -800,13 +800,13 @@ export default function GroupPlanner() {
                           <input 
                             type="number" 
                             placeholder="Amount BDT" 
-                            className="input input-sm input-bordered w-full sm:w-28 rounded-xl text-xs" 
+                            className="w-full text-xs input input-sm input-bordered sm:w-28 rounded-xl" 
                             value={newExpAmount}
                             onChange={(e) => setNewExpAmount(e.target.value)}
                             required
                           />
                           <select 
-                            className="select select-sm select-bordered rounded-xl text-xs"
+                            className="text-xs select select-sm select-bordered rounded-xl"
                             value={newExpPaidBy}
                             onChange={(e) => setNewExpPaidBy(e.target.value)}
                           >
@@ -815,7 +815,7 @@ export default function GroupPlanner() {
                               <option key={idx} value={m.name}>{m.name}</option>
                             ))}
                           </select>
-                          <button type="submit" className="btn btn-sm btn-primary text-white font-bold rounded-xl text-xs">Log Bill</button>
+                          <button type="submit" className="text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Log Bill</button>
                         </form>
                       </div>
                     )}
@@ -823,9 +823,9 @@ export default function GroupPlanner() {
                     {/* Tab: CHAT */}
                     {activeTab === "chat" && (
                       <div className="flex flex-col h-[350px]">
-                        <div className="flex-1 overflow-y-auto space-y-3 p-3 bg-base-200/50 rounded-2xl border border-base-300 mb-3">
+                        <div className="flex-1 p-3 mb-3 space-y-3 overflow-y-auto border bg-base-200/50 rounded-2xl border-base-300">
                           {selectedGroup.messages?.length === 0 ? (
-                            <div className="text-center py-10 text-xs text-base-content/40">
+                            <div className="py-10 text-xs text-center text-base-content/40">
                               Welcome to the group chat! Start coordinating logistics here.
                             </div>
                           ) : (
@@ -834,7 +834,7 @@ export default function GroupPlanner() {
                               return (
                                 <div key={msg.id} className={`chat ${isMe ? "chat-end" : "chat-start"}`}>
                                   <div className="chat-image avatar">
-                                    <div className="w-8 rounded-full border border-base-300">
+                                    <div className="w-8 border rounded-full border-base-300">
                                       <img src={msg.sender?.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=user"} alt={msg.sender?.name} />
                                     </div>
                                   </div>
@@ -854,12 +854,12 @@ export default function GroupPlanner() {
                           <input 
                             type="text" 
                             placeholder="Type message to team..." 
-                            className="input input-sm input-bordered flex-1 rounded-xl text-xs" 
+                            className="flex-1 text-xs input input-sm input-bordered rounded-xl" 
                             value={newChatMessage}
                             onChange={(e) => setNewChatMessage(e.target.value)}
                             required
                           />
-                          <button type="submit" className="btn btn-sm btn-primary text-white font-bold rounded-xl text-xs">Send</button>
+                          <button type="submit" className="text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Send</button>
                         </form>
                       </div>
                     )}
@@ -867,13 +867,13 @@ export default function GroupPlanner() {
                     {/* Tab: ITINERARY */}
                     {activeTab === "itinerary" && (
                       <div className="space-y-4">
-                        <span className="text-xs font-bold text-base-content/60 block pb-2 border-b border-base-200">Chronological Excursion Plan</span>
+                        <span className="block pb-2 text-xs font-bold border-b text-base-content/60 border-base-200">Chronological Excursion Plan</span>
                         <div className="space-y-4">
                           {selectedGroup.itinerary?.map((item, idx) => (
-                            <div key={idx} className="flex gap-4 items-start">
+                            <div key={idx} className="flex items-start gap-4">
                               <div className="badge badge-primary py-2 px-3 rounded-lg font-black text-[10px]">{item.day}</div>
-                              <div className="flex-1 bg-base-200 p-3 rounded-2xl border border-base-300 text-xs">
-                                <p className="font-semibold text-base-content/85 leading-relaxed">{item.plan}</p>
+                              <div className="flex-1 p-3 text-xs border bg-base-200 rounded-2xl border-base-300">
+                                <p className="font-semibold leading-relaxed text-base-content/85">{item.plan}</p>
                               </div>
                             </div>
                           ))}
@@ -889,31 +889,31 @@ export default function GroupPlanner() {
               {/* Right Side: Expedition Approvals (for organizer) */}
               <div className="space-y-6">
                 {(selectedGroup.organizer?.id === currentUser?.id || selectedGroup.organizer?.username === currentUser?.username) && selectedGroup.requests?.length > 0 && (
-                  <div className="card bg-base-100 border border-base-200 p-5 rounded-3xl shadow-sm space-y-3">
+                  <div className="p-5 space-y-3 border shadow-sm card bg-base-100 border-base-200 rounded-3xl">
                     <h3 className="font-bold text-sm text-warning flex items-center gap-1.5">
                       <UserCheck className="w-4 h-4" /> Expedition Approvals
                     </h3>
                     
                     <div className="space-y-2">
                       {selectedGroup.requests.map(req => (
-                        <div key={req.id} className="p-3 bg-base-200 border border-base-300 rounded-2xl flex items-center justify-between gap-2">
+                        <div key={req.id} className="flex items-center justify-between gap-2 p-3 border bg-base-200 border-base-300 rounded-2xl">
                           <div className="flex items-center gap-2">
-                            <img src={req.user?.avatar} className="w-7 h-7 rounded-full object-cover" alt="Requester" />
+                            <img src={req.user?.avatar} className="object-cover rounded-full w-7 h-7" alt="Requester" />
                             <div className="leading-tight">
-                              <span className="text-xs font-bold block">{req.user?.name}</span>
+                              <span className="block text-xs font-bold">{req.user?.name}</span>
                               <span className="text-[9px] text-base-content/50 block">@{req.user?.username}</span>
                             </div>
                           </div>
                           <div className="flex gap-1">
                             <button 
                               onClick={() => handleAcceptUser(selectedGroup.id, req.id)}
-                              className="btn btn-xs btn-success text-white font-bold px-2 rounded-lg"
+                              className="px-2 font-bold text-white rounded-lg btn btn-xs btn-success"
                             >
                               Accept
                             </button>
                             <button 
                               onClick={() => handleRejectUser(selectedGroup.id, req.id)}
-                              className="btn btn-xs btn-ghost text-error font-bold px-2 rounded-lg"
+                              className="px-2 font-bold rounded-lg btn btn-xs btn-ghost text-error"
                             >
                               Decline
                             </button>
@@ -928,17 +928,17 @@ export default function GroupPlanner() {
             </div>
           ) : (
             /* IF USER IS NOT A MEMBER: SHOW DETAILS & DESCRIPTION PREVIEW CARD */
-            <div className="card bg-base-100 border border-base-200 p-6 md:p-8 rounded-3xl shadow-lg space-y-6">
+            <div className="p-6 space-y-6 border shadow-lg card bg-base-100 border-base-200 md:p-8 rounded-3xl">
               
               {/* Header Title & Geotag */}
-              <div className="border-b border-base-200 pb-5 space-y-2">
+              <div className="pb-5 space-y-2 border-b border-base-200">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="badge badge-primary font-bold text-xs px-3 py-1">Public Expedition Details</span>
-                  <span className="text-xs text-base-content/60 flex items-center gap-1">
+                  <span className="px-3 py-1 text-xs font-bold badge badge-primary">Public Expedition Details</span>
+                  <span className="flex items-center gap-1 text-xs text-base-content/60">
                     <Calendar className="w-4 h-4 text-info" /> {selectedGroup.travelDate}
                   </span>
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-black text-base-content">{selectedGroup.title}</h2>
+                <h2 className="text-2xl font-black sm:text-3xl text-base-content">{selectedGroup.title}</h2>
                 <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
                   <MapPin className="w-4 h-4" />
                   <span>{selectedGroup.destination}</span>
@@ -946,33 +946,33 @@ export default function GroupPlanner() {
               </div>
 
               {/* Creator / Organizer Profile Section */}
-              <div className="bg-base-200/60 border border-base-300 p-4 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center justify-between p-4 border bg-base-200/60 border-base-300 rounded-2xl">
                 <div className="flex items-center gap-3">
                   <img 
                     src={selectedGroup.organizer?.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=organizer"} 
                     alt={selectedGroup.organizer?.name} 
-                    className="w-12 h-12 rounded-full object-cover border-2 border-primary" 
+                    className="object-cover w-12 h-12 border-2 rounded-full border-primary" 
                   />
                   <div>
                     <div className="flex items-center gap-2">
-                      <h4 className="font-black text-sm text-base-content">{selectedGroup.organizer?.name}</h4>
+                      <h4 className="text-sm font-black text-base-content">{selectedGroup.organizer?.name}</h4>
                       <span className="badge badge-warning text-[10px] font-bold text-slate-900">Expedition Organizer</span>
                     </div>
-                    <span className="text-xs text-base-content/60 block">@{selectedGroup.organizer?.username || "organizer"}</span>
+                    <span className="block text-xs text-base-content/60">@{selectedGroup.organizer?.username || "organizer"}</span>
                   </div>
                 </div>
 
                 <Link 
                   to={`/profile/${selectedGroup.organizer?.id || selectedGroup.organizer?.username}`}
-                  className="btn btn-xs btn-outline rounded-xl font-bold"
+                  className="font-bold btn btn-xs btn-outline rounded-xl"
                 >
                   View Creator Profile
                 </Link>
               </div>
 
               {/* Members Joined Capacity */}
-              <div className="space-y-3 bg-base-200/30 p-4 rounded-2xl border border-base-200">
-                <div className="flex justify-between items-center">
+              <div className="p-4 space-y-3 border bg-base-200/30 rounded-2xl border-base-200">
+                <div className="flex items-center justify-between">
                   <span className="font-bold text-xs text-base-content flex items-center gap-1.5">
                     <Users className="w-4 h-4 text-primary" /> Members Capacity ({selectedGroup.members?.length || 1} / {selectedGroup.maxMembers} Joined)
                   </span>
@@ -983,17 +983,17 @@ export default function GroupPlanner() {
 
                 <div className="w-full bg-base-300 h-2.5 rounded-full overflow-hidden">
                   <div 
-                    className="bg-primary h-full transition-all" 
+                    className="h-full transition-all bg-primary" 
                     style={{ width: `${((selectedGroup.members?.length || 1) / selectedGroup.maxMembers) * 100}%` }}
                   />
                 </div>
 
                 {/* Member Avatars */}
                 <div className="flex items-center gap-2 pt-1">
-                  <span className="text-xs text-base-content/60 font-semibold">Current Members:</span>
-                  <div className="avatar-group -space-x-3 rtl:space-x-reverse">
+                  <span className="text-xs font-semibold text-base-content/60">Current Members:</span>
+                  <div className="-space-x-3 avatar-group rtl:space-x-reverse">
                     {selectedGroup.members?.map((m, idx) => (
-                      <div key={idx} className="avatar border-2 border-base-100 w-7 h-7 rounded-full tooltip" data-tip={m.name}>
+                      <div key={idx} className="border-2 rounded-full avatar border-base-100 w-7 h-7 tooltip" data-tip={m.name}>
                         <img src={m.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=user"} alt={m.name} />
                       </div>
                     ))}
@@ -1002,60 +1002,60 @@ export default function GroupPlanner() {
               </div>
 
               {/* Description & Logistics Overview */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                <div className="bg-base-200/50 p-4 rounded-2xl border border-base-200 space-y-1">
+              <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-3">
+                <div className="p-4 space-y-1 border bg-base-200/50 rounded-2xl border-base-200">
                   <span className="text-[10px] font-bold text-base-content/50 uppercase block">Estimated Budget</span>
-                  <span className="font-black text-sm text-primary block">{selectedGroup.estimatedBudget} BDT</span>
+                  <span className="block text-sm font-black text-primary">{selectedGroup.estimatedBudget} BDT</span>
                   <span className="text-[10px] text-base-content/60 block">Per member split share</span>
                 </div>
 
-                <div className="bg-base-200/50 p-4 rounded-2xl border border-base-200 space-y-1">
+                <div className="p-4 space-y-1 border bg-base-200/50 rounded-2xl border-base-200">
                   <span className="text-[10px] font-bold text-base-content/50 uppercase block">Transportation Mode</span>
-                  <span className="font-bold text-xs text-base-content/90 block">{selectedGroup.transportation}</span>
+                  <span className="block text-xs font-bold text-base-content/90">{selectedGroup.transportation}</span>
                   <span className="text-[10px] text-base-content/60 block">Organized group route</span>
                 </div>
 
-                <div className="bg-base-200/50 p-4 rounded-2xl border border-base-200 space-y-1">
+                <div className="p-4 space-y-1 border bg-base-200/50 rounded-2xl border-base-200">
                   <span className="text-[10px] font-bold text-base-content/50 uppercase block font-semibold">Accommodation</span>
-                  <span className="font-bold text-xs text-base-content/90 block">{selectedGroup.accommodationPlan || selectedGroup.accommodation}</span>
+                  <span className="block text-xs font-bold text-base-content/90">{selectedGroup.accommodationPlan || selectedGroup.accommodation}</span>
                   <span className="text-[10px] text-base-content/60 block">Reserved hotel / camping</span>
                 </div>
               </div>
 
               {/* Itinerary Preview */}
               <div className="space-y-3">
-                <h4 className="font-bold text-xs text-base-content uppercase tracking-wider">Itinerary Outline Preview</h4>
+                <h4 className="text-xs font-bold tracking-wider uppercase text-base-content">Itinerary Outline Preview</h4>
                 <div className="space-y-3">
                   {selectedGroup.itinerary?.map((item, idx) => (
-                    <div key={idx} className="flex gap-3 items-start bg-base-200/40 p-3 rounded-2xl border border-base-200">
+                    <div key={idx} className="flex items-start gap-3 p-3 border bg-base-200/40 rounded-2xl border-base-200">
                       <span className="badge badge-primary badge-sm font-bold text-[10px] mt-0.5">{item.day}</span>
-                      <p className="text-xs text-base-content/85 leading-relaxed m-0">{item.plan}</p>
+                      <p className="m-0 text-xs leading-relaxed text-base-content/85">{item.plan}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Request to Join CTA */}
-              <div className="pt-4 border-t border-base-200 flex justify-end gap-3">
+              <div className="flex justify-end gap-3 pt-4 border-t border-base-200">
                 <button 
                   onClick={() => setSelectedGroupId(null)} 
-                  className="btn btn-ghost btn-md rounded-2xl text-xs font-bold"
+                  className="text-xs font-bold btn btn-ghost btn-md rounded-2xl"
                 >
                   Back to List
                 </button>
 
                 {selectedGroup.requests?.some(r => r.user?.id === currentUser?.id || r.user?.username === currentUser?.username) ? (
-                  <button disabled className="btn btn-neutral btn-md rounded-2xl font-bold text-xs px-6">
+                  <button disabled className="px-6 text-xs font-bold btn btn-neutral btn-md rounded-2xl">
                     Join Request Sent (Pending Approval ⌛)
                   </button>
                 ) : (selectedGroup.members?.length || 0) >= selectedGroup.maxMembers ? (
-                  <button disabled className="btn btn-disabled btn-md rounded-2xl font-bold text-xs px-6">
+                  <button disabled className="px-6 text-xs font-bold btn btn-disabled btn-md rounded-2xl">
                     Expedition Full
                   </button>
                 ) : (
                   <button 
                     onClick={() => handleJoinRequest(selectedGroup.id)}
-                    className="btn btn-primary btn-md rounded-2xl text-white font-bold text-xs px-6 shadow-lg shadow-primary/20"
+                    className="px-6 text-xs font-bold text-white shadow-lg btn btn-primary btn-md rounded-2xl shadow-primary/20"
                   >
                     Request to Join Expedition 🚀
                   </button>
@@ -1070,17 +1070,17 @@ export default function GroupPlanner() {
 
       {/* Plan Expedition Modal Dialog */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-base-100 border border-base-300 w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4">
-            <h3 className="font-black text-lg text-base-content">Plan Group Expedition</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-md p-6 space-y-4 border shadow-2xl bg-base-100 border-base-300 rounded-3xl">
+            <h3 className="text-lg font-black text-base-content">Plan Group Expedition</h3>
             
             <form onSubmit={handleCreateGroup} className="space-y-4">
               <div className="form-control">
-                <label className="label py-0.5"><span className="label-text text-xs font-bold">Expedition Name</span></label>
+                <label className="label py-0.5"><span className="text-xs font-bold label-text">Expedition Name</span></label>
                 <input 
                   type="text" 
                   placeholder="e.g. Sajek Valley Trekking Tents" 
-                  className="input input-sm input-bordered w-full rounded-xl text-xs" 
+                  className="w-full text-xs input input-sm input-bordered rounded-xl" 
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   required
@@ -1088,9 +1088,9 @@ export default function GroupPlanner() {
               </div>
 
               <div className="form-control">
-                <label className="label py-0.5"><span className="label-text text-xs font-bold">Destination</span></label>
+                <label className="label py-0.5"><span className="text-xs font-bold label-text">Destination</span></label>
                 <select 
-                  className="select select-sm select-bordered w-full rounded-xl text-xs"
+                  className="w-full text-xs select select-sm select-bordered rounded-xl"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
                 >
@@ -1102,20 +1102,20 @@ export default function GroupPlanner() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-control">
-                  <label className="label py-0.5"><span className="label-text text-xs font-bold">Travel Date</span></label>
+                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Travel Date</span></label>
                   <input 
                     type="date" 
-                    className="input input-sm input-bordered w-full rounded-xl text-xs" 
+                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
                     value={travelDate}
                     onChange={(e) => setTravelDate(e.target.value)}
                     required
                   />
                 </div>
                 <div className="form-control">
-                  <label className="label py-0.5"><span className="label-text text-xs font-bold">Max Members</span></label>
+                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Max Members</span></label>
                   <input 
                     type="number" 
-                    className="input input-sm input-bordered w-full rounded-xl text-xs" 
+                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
                     value={maxMembers}
                     onChange={(e) => setMaxMembers(e.target.value)}
                     required
@@ -1125,20 +1125,20 @@ export default function GroupPlanner() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="form-control">
-                  <label className="label py-0.5"><span className="label-text text-xs font-bold">Transport Method</span></label>
+                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Transport Method</span></label>
                   <input 
                     type="text" 
                     placeholder="e.g. Bus & Boat" 
-                    className="input input-sm input-bordered w-full rounded-xl text-xs" 
+                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
                     value={transport}
                     onChange={(e) => setTransport(e.target.value)}
                   />
                 </div>
                 <div className="form-control">
-                  <label className="label py-0.5"><span className="label-text text-xs font-bold">Budget / head (BDT)</span></label>
+                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Budget / head (BDT)</span></label>
                   <input 
                     type="number" 
-                    className="input input-sm input-bordered w-full rounded-xl text-xs" 
+                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
                     value={budget}
                     onChange={(e) => setBudget(e.target.value)}
                   />
@@ -1146,19 +1146,19 @@ export default function GroupPlanner() {
               </div>
 
               <div className="form-control">
-                <label className="label py-0.5"><span className="label-text text-xs font-bold">Hotel / Accommodation Plan</span></label>
+                <label className="label py-0.5"><span className="text-xs font-bold label-text">Hotel / Accommodation Plan</span></label>
                 <input 
                   type="text" 
                   placeholder="e.g. Hotel Seagull & Camping" 
-                  className="input input-sm input-bordered w-full rounded-xl text-xs" 
+                  className="w-full text-xs input input-sm input-bordered rounded-xl" 
                   value={accommodation}
                   onChange={(e) => setAccommodation(e.target.value)}
                 />
               </div>
 
               <div className="flex gap-2 pt-4 border-t border-base-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-sm btn-ghost flex-1 rounded-xl text-xs font-bold">Cancel</button>
-                <button type="submit" className="btn btn-sm btn-primary text-white font-bold flex-1 rounded-xl text-xs">Create Group</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 text-xs font-bold btn btn-sm btn-ghost rounded-xl">Cancel</button>
+                <button type="submit" className="flex-1 text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Create Group</button>
               </div>
 
             </form>
