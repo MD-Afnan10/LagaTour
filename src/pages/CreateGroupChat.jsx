@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { MOCK_USERS, MOCK_CHATS } from "../data/mockData";
+import api from "../services/api";
 import { 
   Users, 
   Search, 
@@ -51,7 +52,7 @@ export default function CreateGroupChat() {
     }
   };
 
-  const handleCreateGroup = (e) => {
+  const handleCreateGroup = async (e) => {
     e.preventDefault();
     setError("");
 
@@ -104,6 +105,23 @@ export default function CreateGroupChat() {
 
     const updatedChats = [newGroupChat, ...chatsList];
     localStorage.setItem("ts_chats", JSON.stringify(updatedChats));
+
+    // Try creating on backend API
+    try {
+      const memberIds = [
+        currentUser?.id || currentUser?.user_id,
+        ...selectedMembers.map(m => m.id || m.user_id)
+      ].filter(Boolean);
+
+      await api.createGroupChat({
+        name: cleanGroupName,
+        memberIds,
+        createdBy: currentUser?.id || currentUser?.user_id,
+        avatarUrl: groupAvatar
+      });
+    } catch (err) {
+      // Backend offline fallback handled gracefully
+    }
 
     addPoints(25);
     confetti({

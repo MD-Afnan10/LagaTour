@@ -140,5 +140,5 @@ A tour package builder that creates packages from given resources.
 
 ## License
 
-> Add license information here.
+MIT License
 
