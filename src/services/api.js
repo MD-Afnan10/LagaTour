@@ -495,9 +495,81 @@ export const api = {
       body: JSON.stringify({ userId })
     });
     return await handleResponse(res);
+  },
+
+  // ===================== RANKINGS & LEADERBOARDS =====================
+
+  /**
+   * Fetch rankings overview (top 3 in all categories + platform stats + personal rank)
+   */
+  async fetchRankingsOverview(userId = null) {
+    const params = new URLSearchParams();
+    if (userId) params.append("userId", userId);
+    const url = `${API_BASE_URL}/rankings/overview${params.toString() ? `?${params.toString()}` : ""}`;
+    const res = await fetch(url);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch ranked travelers leaderboard with filters
+   */
+  async fetchRankedTravelers({ league = "All", search = "", sortBy = "points", limit = 50, offset = 0 } = {}) {
+    const params = new URLSearchParams();
+    if (league) params.append("league", league);
+    if (search) params.append("search", search);
+    if (sortBy) params.append("sortBy", sortBy);
+    if (limit) params.append("limit", limit);
+    if (offset) params.append("offset", offset);
+
+    const res = await fetch(`${API_BASE_URL}/rankings/travelers?${params.toString()}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch Master Tour Guides leaderboard
+   */
+  async fetchRankedGuides({ search = "", division = "All", limit = 50, offset = 0 } = {}) {
+    const params = new URLSearchParams();
+    if (search) params.append("search", search);
+    if (division) params.append("division", division);
+    if (limit) params.append("limit", limit);
+    if (offset) params.append("offset", offset);
+
+    const res = await fetch(`${API_BASE_URL}/rankings/guides?${params.toString()}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch ranked Tour Plans & Itineraries
+   */
+  async fetchRankedPlans({ sortBy = "rating", travelType = "All", search = "", limit = 50, offset = 0 } = {}) {
+    const params = new URLSearchParams();
+    if (sortBy) params.append("sortBy", sortBy);
+    if (travelType) params.append("travelType", travelType);
+    if (search) params.append("search", search);
+    if (limit) params.append("limit", limit);
+    if (offset) params.append("offset", offset);
+
+    const res = await fetch(`${API_BASE_URL}/rankings/plans?${params.toString()}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch top ranked Tourist Spots & Hidden Gems
+   */
+  async fetchRankedPlaces({ division = "All", search = "", limit = 50, offset = 0 } = {}) {
+    const params = new URLSearchParams();
+    if (division) params.append("division", division);
+    if (search) params.append("search", search);
+    if (limit) params.append("limit", limit);
+    if (offset) params.append("offset", offset);
+
+    const res = await fetch(`${API_BASE_URL}/rankings/places?${params.toString()}`);
+    return await handleResponse(res);
   }
 };
 
 export default api;
+
 
 

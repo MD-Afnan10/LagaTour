@@ -7,6 +7,7 @@ import postRoutes from "./routes/postRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import placeRoutes from "./routes/placeRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
+import rankingRoutes from "./routes/rankingRoutes.js";
 import { initSocket } from "./services/socketService.js";
 
 dotenv.config();
@@ -43,6 +44,8 @@ app.use("/api", postRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/places", placeRoutes);
 app.use("/api/chats", chatRoutes);
+app.use("/api/rankings", rankingRoutes);
+
 
 
 // Error Handling Middleware
