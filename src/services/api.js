@@ -295,8 +295,11 @@ export const api = {
   /**
    * Fetch message history for a conversation
    */
-  async fetchChatMessages(conversationId) {
-    const res = await fetch(`${API_BASE_URL}/chats/${encodeURIComponent(conversationId)}/messages`);
+  async fetchChatMessages(conversationId, userId = null) {
+    const params = new URLSearchParams();
+    if (userId) params.append("userId", userId);
+    const url = `${API_BASE_URL}/chats/${encodeURIComponent(conversationId)}/messages${params.toString() ? `?${params.toString()}` : ""}`;
+    const res = await fetch(url);
     const data = await handleResponse(res);
     return data.messages || [];
   },
@@ -305,13 +308,15 @@ export const api = {
    * Get or create 1-on-1 direct chat
    */
   async getOrCreateDirectChat(userId1, userId2) {
+    const senderId = userId1?.id || userId1?.user_id || userId1;
+    const recipientId = userId2?.id || userId2?.user_id || userId2;
     const res = await fetch(`${API_BASE_URL}/chats/direct`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId1, userId2 })
+      body: JSON.stringify({ senderId, recipientId, userId1: senderId, userId2: recipientId })
     });
     const data = await handleResponse(res);
-    return data.chat;
+    return data.conversation || data.chat;
   },
 
   /**
@@ -324,7 +329,7 @@ export const api = {
       body: JSON.stringify(groupData)
     });
     const data = await handleResponse(res);
-    return data.chat;
+    return data.conversation || data.chat;
   },
 
   /**
@@ -340,7 +345,22 @@ export const api = {
     return data.message;
   },
 
+
+  /**
+   * Search all travelers across the platform by username or full name
+   */
+  async searchChatUsers(searchTerm = "", currentUserId = null) {
+    const params = new URLSearchParams();
+    if (searchTerm) params.append("q", searchTerm);
+    if (currentUserId) params.append("currentUserId", currentUserId);
+
+    const res = await fetch(`${API_BASE_URL}/chats/users?${params.toString()}`);
+    const data = await handleResponse(res);
+    return data.users || [];
+  },
+
   // ===================== PLACE TRACKING & "MY PLACES" =====================
+
 
   /**
    * Fetch all divisions and districts

@@ -16,12 +16,27 @@ export function initSocket(httpServer) {
   });
 
   io.on("connection", (socket) => {
-    console.log(`🔌 [Socket.io] Client connected: ${socket.id}`);
+    const queryUserId = socket.handshake.query?.userId;
+    if (queryUserId) {
+      socket.join(`user_${queryUserId}`);
+      console.log(`🔌 [Socket.io] Client connected: ${socket.id} (user_${queryUserId})`);
+    } else {
+      console.log(`🔌 [Socket.io] Client connected: ${socket.id}`);
+    }
+
+    // Register user private socket room
+    socket.on("register_user", ({ userId }) => {
+      if (userId) {
+        socket.join(`user_${userId}`);
+        console.log(`👤 Socket ${socket.id} registered to user room: user_${userId}`);
+      }
+    });
 
     // Join a specific conversation room
     socket.on("join_chat", ({ conversationId, userId, username }) => {
       if (!conversationId) return;
       socket.join(conversationId);
+      if (userId) socket.join(`user_${userId}`);
       console.log(`👤 User ${username || userId || socket.id} joined room: ${conversationId}`);
 
       // Notify other members in the room that user is online in this chat

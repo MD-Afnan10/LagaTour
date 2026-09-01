@@ -9,26 +9,25 @@ function uid(prefix = "id") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 }
 
-/**
- * Ensures a user exists in the MySQL database (handles first-time Firebase users)
- */
 async function ensureUserExists(userData) {
   if (!userData) return null;
-  const userId = userData.id || userData.user_id;
+  const userId = typeof userData === "string" ? userData : (userData.id || userData.user_id);
   if (!userId) return null;
 
   const username =
-    userData.username ||
-    (userData.name || "traveler").toLowerCase().replace(/\s+/g, "_");
-  const email = userData.email || `${username}@laga.tour`;
-  const nameParts = (userData.name || username).split(" ");
-  const firstName = nameParts[0] || "Traveler";
-  const lastName = nameParts.slice(1).join(" ") || "";
+    typeof userData === "object" && userData.username
+      ? userData.username
+      : (typeof userData === "object" && userData.name ? userData.name : userId)
+          .toLowerCase()
+          .replace(/\s+/g, "_");
+  const email = (typeof userData === "object" && userData.email) || `${username}@laga.tour`;
+  const nameParts = ((typeof userData === "object" && userData.name) || username).split(" ");
+  const firstName = (typeof userData === "object" && userData.firstName) || nameParts[0] || "Traveler";
+  const lastName = (typeof userData === "object" && userData.lastName) || nameParts.slice(1).join(" ") || "";
   const avatar =
-    userData.avatar ||
-    userData.profile_picture_url ||
-    `https://api.dicebear.com/7.x/adventurer/svg?seed=${username}`;
-  const points = userData.points || userData.league_points || 350;
+    (typeof userData === "object" && (userData.avatar || userData.profile_picture_url || userData.profilePictureUrl)) ||
+    `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(username)}`;
+  const points = (typeof userData === "object" && (userData.points || userData.league_points)) || 350;
 
   try {
     await query(
@@ -36,8 +35,7 @@ async function ensureUserExists(userData) {
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          username = VALUES(username),
-         profile_picture_url = VALUES(profile_picture_url),
-         league_points = VALUES(league_points)`,
+         profile_picture_url = VALUES(profile_picture_url)`,
       [userId, email, username, firstName, lastName, avatar, points]
     );
   } catch (err) {
@@ -148,6 +146,7 @@ async function hydrateConversations(convRows, currentUserId) {
           text: lastMsgRow.message_text,
           mediaUrl: lastMsgRow.media_url,
           type: lastMsgRow.message_type,
+          createdAt: lastMsgRow.created_at,
           time: new Date(lastMsgRow.created_at).toLocaleString([], {
             month: "short",
             day: "numeric",
@@ -190,11 +189,8 @@ export async function getConversations(req, res) {
       return res.status(400).json({ success: false, message: "userId query parameter is required." });
     }
 
-    // Verify user exists
-    const [userRow] = await query(`SELECT user_id FROM users WHERE user_id = ?`, [userId]);
-    if (!userRow) {
-      return res.status(404).json({ success: false, message: "User not found." });
-    }
+    // Auto-ensure user exists in database so fresh accounts don't trigger 404
+    await ensureUserExists(userId);
 
     const convRows = await query(
       `SELECT c.*
@@ -223,20 +219,12 @@ export async function getMessages(req, res) {
     const { conversationId } = req.params;
     const { userId, limit = 50, offset = 0 } = req.query;
 
-    if (!userId) {
-      return res.status(400).json({ success: false, message: "userId query parameter is required." });
-    }
-
-    // Verify user is a member of this conversation
-    const [member] = await query(
-      `SELECT member_id FROM conversation_members WHERE conversation_id = ? AND user_id = ?`,
-      [conversationId, userId]
-    );
-    if (!member) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not a participant of this conversation.",
-      });
+    // If userId is provided, update read tracker
+    if (userId) {
+      await query(
+        `UPDATE conversation_members SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?`,
+        [conversationId, userId]
+      ).catch(() => {});
     }
 
     const lim = Math.min(parseInt(limit, 10) || 50, 200);
@@ -252,12 +240,6 @@ export async function getMessages(req, res) {
       [conversationId, lim, off]
     );
 
-    // Update last_read_at for this member
-    await query(
-      `UPDATE conversation_members SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?`,
-      [conversationId, userId]
-    );
-
     const messages = messagesRaw.map((m) => ({
       id: m.message_id,
       conversationId: m.conversation_id,
@@ -268,11 +250,15 @@ export async function getMessages(req, res) {
         "Traveler",
       avatar:
         m.profile_picture_url ||
-        `https://api.dicebear.com/7.x/adventurer/svg?seed=${m.username || m.sender_id}`,
+        `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(m.username || m.sender_id)}`,
+      senderAvatar:
+        m.profile_picture_url ||
+        `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(m.username || m.sender_id)}`,
       text: m.message_text,
       mediaUrl: m.media_url,
       type: m.message_type || "text",
       isRead: Boolean(m.is_read),
+      createdAt: m.created_at,
       time: new Date(m.created_at).toLocaleString([], {
         month: "short",
         day: "numeric",
@@ -294,7 +280,9 @@ export async function getMessages(req, res) {
  */
 export async function getOrCreateDM(req, res) {
   try {
-    const { senderId, recipientId, senderData } = req.body;
+    const senderId = req.body.senderId || req.body.userId1 || req.body.userId || req.body.currentUserId;
+    const recipientId = req.body.recipientId || req.body.userId2 || req.body.targetUserId || req.body.otherUserId;
+    const { senderData } = req.body;
 
     if (!senderId || !recipientId) {
       return res.status(400).json({ success: false, message: "senderId and recipientId are required." });
@@ -322,13 +310,19 @@ export async function getOrCreateDM(req, res) {
         [existing.conversation_id]
       );
       const [conversation] = await hydrateConversations(convRows, senderId);
-      return res.json({ success: true, conversation, isNew: false });
+      return res.json({ success: true, conversation, chat: conversation, isNew: false });
     }
 
-    // Verify recipient exists
+    // Verify recipient exists (or ensure default fallback)
     const [recipient] = await query(`SELECT user_id FROM users WHERE user_id = ?`, [recipientId]);
     if (!recipient) {
-      return res.status(404).json({ success: false, message: "Recipient user not found." });
+      // Auto register minimal stub if user exists in Firebase/frontend
+      await query(
+        `INSERT INTO users (user_id, email, username, first_name, last_name, profile_picture_url)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE user_id=user_id`,
+        [recipientId, `${recipientId}@laga.tour`, recipientId, "Traveler", "", `https://api.dicebear.com/7.x/adventurer/svg?seed=${recipientId}`]
+      );
     }
 
     const conversationId = uid("chat");
@@ -350,7 +344,7 @@ export async function getOrCreateDM(req, res) {
     );
     const [conversation] = await hydrateConversations(convRows, senderId);
 
-    res.status(201).json({ success: true, conversation, isNew: true });
+    res.status(201).json({ success: true, conversation, chat: conversation, isNew: true });
   } catch (error) {
     console.error("Error in getOrCreateDM:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -363,7 +357,10 @@ export async function getOrCreateDM(req, res) {
  */
 export async function createGroupChat(req, res) {
   try {
-    const { creator, groupName, memberIds = [], avatarUrl } = req.body;
+    const groupName = req.body.groupName || req.body.name || req.body.title;
+    const creator = req.body.creator || req.body.createdBy || req.body.userId || req.body.user;
+    const memberIds = req.body.memberIds || req.body.members || [];
+    const avatarUrl = req.body.avatarUrl || req.body.avatar;
 
     if (!groupName || !groupName.trim()) {
       return res.status(400).json({ success: false, message: "Group name is required." });
@@ -398,17 +395,17 @@ export async function createGroupChat(req, res) {
 
     // Add selected members
     const addedMembers = [creatorId];
-    for (const mId of memberIds) {
-      if (mId === creatorId || addedMembers.includes(mId)) continue;
-      const [uRow] = await query(`SELECT user_id FROM users WHERE user_id = ?`, [mId]);
-      if (uRow) {
-        await query(
-          `INSERT INTO conversation_members (member_id, conversation_id, user_id, role, joined_at)
-           VALUES (?, ?, ?, 'member', NOW())`,
-          [uid("cm"), conversationId, mId]
-        );
-        addedMembers.push(mId);
-      }
+    for (const rawMember of memberIds) {
+      const mId = typeof rawMember === "string" ? rawMember : (rawMember.id || rawMember.user_id);
+      if (!mId || mId === creatorId || addedMembers.includes(mId)) continue;
+      await ensureUserExists(rawMember);
+      await query(
+        `INSERT INTO conversation_members (member_id, conversation_id, user_id, role, joined_at)
+         VALUES (?, ?, ?, 'member', NOW())
+         ON DUPLICATE KEY UPDATE role = VALUES(role)`,
+        [uid("cm"), conversationId, mId]
+      );
+      addedMembers.push(mId);
     }
 
     // Insert welcome system message
@@ -424,7 +421,7 @@ export async function createGroupChat(req, res) {
     await query(
       `UPDATE users SET league_points = league_points + 25 WHERE user_id = ?`,
       [creatorId]
-    );
+    ).catch(() => {});
 
     const convRows = await query(
       `SELECT * FROM conversations WHERE conversation_id = ?`,
@@ -433,19 +430,21 @@ export async function createGroupChat(req, res) {
     const [conversation] = await hydrateConversations(convRows, creatorId);
 
     // Preload system message so frontend can display immediately
-    conversation.messages = [
-      {
-        id: systemMsgId,
-        conversationId,
-        senderId: "system",
-        senderName: "System",
-        text: welcomeText,
-        type: "system",
-        time: "Just now",
-      },
-    ];
+    if (conversation) {
+      conversation.messages = [
+        {
+          id: systemMsgId,
+          conversationId,
+          senderId: "system",
+          senderName: "System",
+          text: welcomeText,
+          type: "system",
+          time: "Just now",
+        },
+      ];
+    }
 
-    res.status(201).json({ success: true, conversation });
+    res.status(201).json({ success: true, conversation, chat: conversation });
   } catch (error) {
     console.error("Error in createGroupChat:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -459,7 +458,14 @@ export async function createGroupChat(req, res) {
 export async function sendMessage(req, res) {
   try {
     const { conversationId } = req.params;
-    const { user, text, mediaUrl = null, messageType = "text" } = req.body;
+    const { text, mediaUrl = null, messageType = "text" } = req.body;
+    const userPayload = req.body.user || {
+      id: req.body.senderId || req.body.userId,
+      user_id: req.body.senderId || req.body.userId,
+      name: req.body.senderName || "Traveler",
+      avatar: req.body.senderAvatar || req.body.avatar,
+      username: req.body.username
+    };
 
     if (!text || !text.trim()) {
       return res.status(400).json({ success: false, message: "Message text cannot be empty." });
@@ -467,27 +473,51 @@ export async function sendMessage(req, res) {
     if (text.trim().length > 5000) {
       return res.status(400).json({ success: false, message: "Message cannot exceed 5000 characters." });
     }
-    if (!user) {
+    if (!userPayload || (!userPayload.id && !userPayload.user_id)) {
       return res.status(400).json({ success: false, message: "User information is required." });
     }
 
-    const senderId = await ensureUserExists(user);
+    const senderId = await ensureUserExists(userPayload);
 
-    // Verify sender is a member of this conversation
-    const [member] = await query(
-      `SELECT member_id FROM conversation_members WHERE conversation_id = ? AND user_id = ?`,
-      [conversationId, senderId]
+    // 1. Ensure conversation exists in conversations table (prevents FK violation)
+    const [convRow] = await query(
+      `SELECT conversation_id FROM conversations WHERE conversation_id = ?`,
+      [conversationId]
     );
-    if (!member) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not a participant of this conversation.",
-      });
+
+    if (!convRow) {
+      await query(
+        `INSERT INTO conversations (conversation_id, type, created_by, created_at, updated_at)
+         VALUES (?, 'direct', ?, NOW(), NOW())
+         ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+        [conversationId, senderId]
+      );
+
+      // If conversationId is structured as chat_direct_<recipientId>, auto-register recipient
+      if (conversationId.startsWith("chat_direct_")) {
+        const otherId = conversationId.replace(/^chat_direct_/, "");
+        await ensureUserExists(otherId);
+        await query(
+          `INSERT INTO conversation_members (member_id, conversation_id, user_id, role, joined_at)
+           VALUES (?, ?, ?, 'member', NOW())
+           ON DUPLICATE KEY UPDATE role = VALUES(role)`,
+          [uid("cm"), conversationId, otherId]
+        ).catch(() => {});
+      }
     }
+
+    // 2. Verify sender is a member of this conversation, or auto-add
+    await query(
+      `INSERT INTO conversation_members (member_id, conversation_id, user_id, role, joined_at)
+       VALUES (?, ?, ?, 'member', NOW())
+       ON DUPLICATE KEY UPDATE last_read_at = NOW()`,
+      [uid("cm"), conversationId, senderId]
+    ).catch(() => {});
 
     const messageId = uid("msg");
     const cleanText = text.trim();
 
+    // 3. Insert message into messages table
     await query(
       `INSERT INTO messages (message_id, conversation_id, sender_id, message_text, media_url, message_type, created_at)
        VALUES (?, ?, ?, ?, ?, ?, NOW())`,
@@ -504,17 +534,26 @@ export async function sendMessage(req, res) {
     await query(
       `UPDATE users SET league_points = league_points + 2 WHERE user_id = ?`,
       [senderId]
-    );
+    ).catch(() => {});
+
+    const senderName = userPayload.name || userPayload.first_name || userPayload.username || "Traveler";
+    const senderAvatar =
+      userPayload.avatar ||
+      userPayload.profile_picture_url ||
+      userPayload.profilePictureUrl ||
+      `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(userPayload.username || senderId)}`;
 
     const formattedMessage = {
       id: messageId,
       conversationId,
       senderId,
-      senderName: user.name || "Traveler",
-      avatar: user.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${user.username || senderId}`,
+      senderName,
+      senderAvatar,
+      avatar: senderAvatar,
       text: cleanText,
       mediaUrl,
       type: messageType,
+      createdAt: new Date().toISOString(),
       time: new Date().toLocaleString([], {
         month: "short",
         day: "numeric",
@@ -523,8 +562,23 @@ export async function sendMessage(req, res) {
       }),
     };
 
-    // ⚡ Real-time WebSocket Broadcast: notify everyone in the room immediately
+    // ⚡ Real-time WebSocket Broadcast: notify the conversation room immediately
     emitToConversation(conversationId, "receive_message", formattedMessage);
+
+    // ⚡ Also notify all conversation members on their private user socket rooms
+    try {
+      const memberRows = await query(
+        `SELECT user_id FROM conversation_members WHERE conversation_id = ?`,
+        [conversationId]
+      );
+      for (const m of memberRows) {
+        if (m.user_id && m.user_id !== senderId) {
+          emitToConversation(`user_${m.user_id}`, "receive_message", formattedMessage);
+        }
+      }
+    } catch (socketErr) {
+      console.warn("Socket member broadcast note:", socketErr.message);
+    }
 
     res.status(201).json({
       success: true,
@@ -542,29 +596,42 @@ export async function sendMessage(req, res) {
  */
 export async function searchChatUsers(req, res) {
   try {
-    const { q = "", currentUserId } = req.query;
+    const { q = "", currentUserId = "" } = req.query;
 
-    const searchTerm = `%${q.trim()}%`;
-    const rows = await query(
-      `SELECT user_id, username, first_name, last_name, profile_picture_url, bio, league_points
-       FROM users
-       WHERE account_status = 'active'
-         AND user_id != ?
-         AND (
-           username LIKE ? OR
-           first_name LIKE ? OR
-           last_name LIKE ? OR
-           bio LIKE ?
-         )
-       ORDER BY league_points DESC
-       LIMIT 20`,
-      [currentUserId || "___none___", searchTerm, searchTerm, searchTerm, searchTerm]
-    );
+    const cleanQ = (q || "").trim().replace(/^@/, "").toLowerCase();
+    const searchTerm = `%${cleanQ}%`;
 
-    const users = rows.map((r) => formatUser(r));
+    let querySql = `
+      SELECT user_id, username, first_name, last_name, profile_picture_url, bio, league_points
+      FROM users
+      WHERE (account_status IS NULL OR LOWER(account_status) NOT IN ('blocked', 'suspended', 'deleted', 'banned'))
+    `;
+    const queryParams = [];
+
+    if (currentUserId && currentUserId !== "___none___") {
+      querySql += ` AND user_id != ?`;
+      queryParams.push(currentUserId);
+    }
+
+    if (cleanQ) {
+      querySql += ` AND (
+        LOWER(username) LIKE ? OR
+        LOWER(first_name) LIKE ? OR
+        LOWER(last_name) LIKE ? OR
+        LOWER(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) LIKE ? OR
+        LOWER(COALESCE(bio, '')) LIKE ?
+      )`;
+      queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+    }
+
+    querySql += ` ORDER BY league_points DESC LIMIT 50`;
+
+    const rows = await query(querySql, queryParams);
+    const users = (rows || []).map((r) => formatUser(r)).filter(Boolean);
+
     res.json({ success: true, users });
   } catch (error) {
     console.error("Error in searchChatUsers:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message, users: [] });
   }
 }
