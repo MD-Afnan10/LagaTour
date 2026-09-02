@@ -414,9 +414,138 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 19. Seed default users & places & chats if empty
+    // 19. Create Tour Plans table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`tour_plans\` (
+        \`tour_plan_id\` varchar(255) NOT NULL,
+        \`user_id\` varchar(255) NOT NULL,
+        \`title\` varchar(255) NOT NULL,
+        \`description\` text DEFAULT NULL,
+        \`destination\` varchar(255) NOT NULL,
+        \`starting_location\` varchar(255) NOT NULL,
+        \`travel_start_date\` date DEFAULT NULL,
+        \`travel_end_date\` date DEFAULT NULL,
+        \`duration_days\` int(11) DEFAULT NULL,
+        \`transportation\` enum('Flight','Train','Bus','Car','Bike','Walk','Multiple') NOT NULL DEFAULT 'Bus',
+        \`accommodation_type\` enum('Hotel','Hostel','Airbnb','Home_Stay','Camping','Other') DEFAULT 'Hotel',
+        \`accommodation_details\` text DEFAULT NULL,
+        \`total_budget\` decimal(12,2) DEFAULT NULL,
+        \`travel_tips\` text DEFAULT NULL,
+        \`travel_type\` enum('Solo','Friends','Family','Couple','Group') DEFAULT 'Friends',
+        \`season\` enum('Spring','Summer','Fall','Winter') DEFAULT 'Winter',
+        \`is_public\` tinyint(1) DEFAULT 1,
+        \`views_count\` int(11) DEFAULT 0,
+        \`likes_count\` int(11) DEFAULT 0,
+        \`comments_count\` int(11) DEFAULT 0,
+        \`rating_avg\` decimal(3,2) DEFAULT 0.00,
+        \`rating_count\` int(11) DEFAULT 0,
+        \`saves_count\` int(11) DEFAULT 0,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        \`updated_at\` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (\`tour_plan_id\`),
+        KEY \`fk_tour_plan_user\` (\`user_id\`),
+        CONSTRAINT \`fk_tour_plan_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
+    // Ensure missing columns exist in tour_plans table if created previously
+    try {
+      const [tpCols] = await p.query("SHOW COLUMNS FROM tour_plans");
+      const colNames = tpCols.map(c => c.Field);
+      if (!colNames.includes("saves_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN saves_count int(11) DEFAULT 0");
+      if (!colNames.includes("views_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN views_count int(11) DEFAULT 0");
+      if (!colNames.includes("likes_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN likes_count int(11) DEFAULT 0");
+      if (!colNames.includes("comments_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN comments_count int(11) DEFAULT 0");
+      if (!colNames.includes("rating_avg")) await p.query("ALTER TABLE tour_plans ADD COLUMN rating_avg decimal(3,2) DEFAULT 0.00");
+      if (!colNames.includes("rating_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN rating_count int(11) DEFAULT 0");
+    } catch (tpAlterErr) {
+      // safe fallback
+    }
+
+
+    // 20. Create Tour Plan Places Modified table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`tour_plan_places_modified\` (
+        \`tour_plan_place_id\` varchar(255) NOT NULL,
+        \`tour_plan_id\` varchar(255) NOT NULL,
+        \`place_id\` varchar(255) NOT NULL,
+        \`visit_date\` date DEFAULT NULL,
+        \`location\` varchar(250) DEFAULT NULL,
+        \`notes\` text DEFAULT NULL,
+        \`transportation\` enum('Flight','Train','Bus','Car','Bike','Walk','Multiple') NOT NULL DEFAULT 'Bus',
+        \`accommodation_type\` enum('Hotel','Hostel','Airbnb','Home_Stay','Camping','Other') DEFAULT 'Hotel',
+        \`accommodation_details\` text DEFAULT NULL,
+        \`Expense\` double DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`tour_plan_place_id\`),
+        KEY \`fk_tpp_tour_plan\` (\`tour_plan_id\`),
+        KEY \`fk_tpp_place\` (\`place_id\`),
+        CONSTRAINT \`fk_tpp_place\` FOREIGN KEY (\`place_id\`) REFERENCES \`places\` (\`place_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_tpp_tour_plan\` FOREIGN KEY (\`tour_plan_id\`) REFERENCES \`tour_plans\` (\`tour_plan_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 21. Create Tour Ratings table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`tour_ratings\` (
+        \`rating_id\` varchar(255) NOT NULL,
+        \`tour_plan_id\` varchar(255) NOT NULL,
+        \`user_id\` varchar(255) NOT NULL,
+        \`overall_rating\` decimal(2,1) NOT NULL,
+        \`review_text\` text DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        \`updated_at\` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (\`rating_id\`),
+        UNIQUE KEY \`unique_user_tour_rating\` (\`tour_plan_id\`,\`user_id\`),
+        KEY \`fk_rating_user\` (\`user_id\`),
+        CONSTRAINT \`fk_rating_tour\` FOREIGN KEY (\`tour_plan_id\`) REFERENCES \`tour_plans\` (\`tour_plan_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_rating_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 22. Create Follows table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`follows\` (
+        \`follow_id\` varchar(255) NOT NULL,
+        \`follower_id\` varchar(255) NOT NULL,
+        \`following_id\` varchar(255) NOT NULL,
+        \`status\` enum('pending','accepted','blocked') DEFAULT 'pending',
+        \`requested_at\` datetime DEFAULT current_timestamp(),
+        \`accepted_at\` datetime DEFAULT NULL,
+        \`updated_at\` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (\`follow_id\`),
+        UNIQUE KEY \`unique_follow\` (\`follower_id\`,\`following_id\`),
+        KEY \`fk_follow_following\` (\`following_id\`),
+        CONSTRAINT \`fk_follow_follower\` FOREIGN KEY (\`follower_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_follow_following\` FOREIGN KEY (\`following_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 23. Create Expedition Groups table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`expedition_groups\` (
+        \`group_id\` varchar(255) NOT NULL,
+        \`organizer_id\` varchar(255) NOT NULL,
+        \`title\` varchar(255) NOT NULL,
+        \`destination\` varchar(255) NOT NULL,
+        \`travel_date\` date DEFAULT NULL,
+        \`estimated_budget\` decimal(12,2) DEFAULT NULL,
+        \`max_members\` int(11) DEFAULT 10,
+        \`transportation\` varchar(100) DEFAULT 'Bus',
+        \`accommodation_plan\` text DEFAULT NULL,
+        \`itinerary\` text DEFAULT NULL,
+        \`status\` enum('planning','open','full','completed','cancelled') DEFAULT 'open',
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        \`updated_at\` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+        PRIMARY KEY (\`group_id\`),
+        KEY \`fk_exp_group_organizer\` (\`organizer_id\`),
+        CONSTRAINT \`fk_exp_group_organizer\` FOREIGN KEY (\`organizer_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 24. Seed default users & places & chats if empty
     await seedInitialData(p);
+
 
     console.log("✅ MySQL Database & Tables initialized successfully (lagatour_db)");
   } catch (error) {
@@ -428,22 +557,18 @@ export async function initDatabase() {
 async function seedInitialData(p) {
   const adminPasswordHash = await bcrypt.hash("admin", 10);
 
-  // Guarantee admin user exists in MySQL database
-  await p.query(`
-    INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count)
-    VALUES ('admin_root', 'admin@laga.tour', ?, 'admin_root', 'System', 'Admin', 'https://api.dicebear.com/7.x/adventurer/svg?seed=admin', 'LagaTour System Administrator', 'Bangladesh', 'Dhaka', '+8801500000000', 'Solo', 9999, 10000, 50)
-    ON DUPLICATE KEY UPDATE 
-      password_hash = COALESCE(users.password_hash, VALUES(password_hash))
-  `, [adminPasswordHash]);
-
-  // Clean up any previously seeded dummy users, posts, and places if they exist
   try {
-    await p.query("DELETE FROM users WHERE user_id IN ('user_1', 'user_2', 'user_3', 'user_4')");
-    await p.query("DELETE FROM posts WHERE post_id IN ('post_1', 'post_2')");
-    await p.query("DELETE FROM places WHERE place_id IN ('place_cxb_beach', 'place_sajek_valley', 'place_sreemangal_tea', 'place_st_martin', 'place_ratargul_swamp')");
+    // Guarantee admin user exists in MySQL database
+    await p.query(`
+      INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count)
+      VALUES ('admin_root', 'admin@laga.tour', ?, 'admin_root', 'System', 'Admin', 'https://api.dicebear.com/7.x/adventurer/svg?seed=admin', 'LagaTour System Administrator', 'Bangladesh', 'Dhaka', '+8801500000000', 'Solo', 9999, 10000, 50)
+      ON DUPLICATE KEY UPDATE 
+        password_hash = COALESCE(users.password_hash, VALUES(password_hash))
+    `, [adminPasswordHash]);
   } catch (cleanErr) {
     // Non-fatal if tables are already empty
   }
+
 
   // 1. Seed Bangladesh Geographic Divisions (Reference Data)
   const divisionsData = [
@@ -547,7 +672,72 @@ async function seedInitialData(p) {
     );
   }
 
+  // 3. Seed Community Travelers if user count is low
+  const [userCount] = await p.query("SELECT COUNT(*) as count FROM users WHERE user_id != 'admin_root'");
+  if (userCount[0].count < 3) {
+    console.log("🌱 Seeding top ranking community travelers into lagatour_db...");
+    const samplePasswordHash = await bcrypt.hash("traveler123", 10);
+    
+    await p.query(`
+      INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, preferred_travel_type, total_trips_shared, league_points, followers_count, following_count, is_verified, account_status)
+      VALUES
+        ('user_tariq', 'tariqul@laga.tour', ?, 'tariq_adventures', 'Tariqul', 'Islam', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400', 'Bandarban & Sajek mountaineering leader. Exploring the high peaks of Bangladesh.', 'Bangladesh', 'Bandarban', 'Group', 38, 4850, 12400, 180, 1, 'active'),
+        ('user_nusrat', 'nusrat@laga.tour', ?, 'nusrat_trails', 'Nusrat', 'Jahan', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400', 'Sylhet rainforest explorer, tea garden backpacker, and wildlife photographer.', 'Bangladesh', 'Sylhet', 'Friends', 26, 3420, 8900, 240, 1, 'active'),
+        ('user_siam', 'siam@laga.tour', ?, 'siam_nomad', 'Siam', 'Ahmed', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400', 'Coastal tracker, scuba diver, and St. Martin Island local guide.', 'Bangladesh', 'Cox\\'s Bazar', 'Solo', 19, 2890, 7200, 310, 1, 'active'),
+        ('user_tanvir', 'tanvir@laga.tour', ?, 'tanvir_heritage', 'Tanvir', 'Hossain', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400', 'Heritage and historical architecture specialist across Bagerhat & Rajshahi.', 'Bangladesh', 'Rajshahi', 'Family', 15, 1750, 4300, 150, 1, 'active'),
+        ('user_farhana', 'farhana@laga.tour', ?, 'farhana_wander', 'Farhana', 'Yasmin', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400', 'Mangrove researcher, houseboat traveler, and eco-tourism advocate.', 'Bangladesh', 'Khulna', 'Couple', 10, 890, 2100, 195, 0, 'active'),
+        ('user_nabil', 'nabil@laga.tour', ?, 'nabil_roams', 'Nabil', 'Khan', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400', 'Weekend camper, cycle trekker, and campfire storyteller.', 'Bangladesh', 'Dhaka', 'Friends', 7, 650, 1450, 120, 0, 'active')
+      ON DUPLICATE KEY UPDATE league_points = VALUES(league_points), followers_count = VALUES(followers_count);
+    `, [samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash]);
+  }
+
+  // 4. Seed Verified Places & Destinations
+  const [placesCount] = await p.query("SELECT COUNT(*) as count FROM places");
+  if (placesCount[0].count === 0) {
+    console.log("🌱 Seeding top ranked places into lagatour_db...");
+    await p.query(`
+      INSERT INTO places (place_id, place_name, description, division_id, district_id, division, district, latitude, longitude, address, safety_rating, safety_rating_count, is_public, created_by, likes_count, comments_count, saves_count)
+      VALUES
+        ('place_sajek', 'Sajek Valley (Valley of Clouds)', 'Nestled among the hills of Kasalong range in Rangamati. Famous for fluffy white clouds floating right into your resort balcony.', 'div_chittagong', 'dis_rangamati', 'Chattogram', 'Rangamati', 23.3820, 92.2938, 'Sajek Union, Baghaichhari, Rangamati', 4.95, 84, 1, 'user_tariq', 340, 45, 185),
+        ('place_stmartin', 'Saint Martin\\'s Island & Chera Dwip', 'Bangladesh\\'s sole coral island surrounded by crystal-clear azure waters, coconut groves, and vibrant marine life.', 'div_chittagong', 'dis_coxsbazar', 'Chattogram', 'Cox\\'s Bazar', 20.6274, 92.3225, 'Bay of Bengal, Teknaf, Cox\\'s Bazar', 4.88, 120, 1, 'user_siam', 420, 62, 230),
+        ('place_tanguar', 'Tanguar Haor Ramsar Wetland', 'Spectacular freshwater wetland ecosystem beneath the Meghalaya hills, best explored on traditional wooden houseboats.', 'div_sylhet', 'dis_sunamganj', 'Sylhet', 'Sunamganj', 25.1235, 91.0762, 'Tahirpur, Sunamganj', 4.82, 65, 1, 'user_nusrat', 280, 38, 140),
+        ('place_lawachara', 'Lawachara Rainforest Sanctuary', 'Lush semi-evergreen forest famous for hoolock gibbons, canopy trees, and scenic railway tracks slicing through green hills.', 'div_sylhet', 'dis_moulvibazar', 'Sylhet', 'Moulvibazar', 24.3267, 91.7850, 'Kamalganj, Moulvibazar', 4.75, 48, 1, 'user_nusrat', 195, 22, 95),
+        ('place_keokradong', 'Keokradong Peak & Boga Lake', 'One of the highest reachable mountain peaks in Bangladesh, sitting atop the mystic volcano-like Boga Lake.', 'div_chittagong', 'dis_bandarban', 'Chattogram', 'Bandarban', 21.9500, 92.5167, 'Ruma, Bandarban', 4.70, 52, 1, 'user_tariq', 260, 34, 115),
+        ('place_sundarbans', 'Sundarbans Mangrove Tiger Reserve', 'The world\\'s largest contiguous mangrove forest and UNESCO World Heritage site, home to the Royal Bengal Tiger.', 'div_khulna', 'dis_bagerhat', 'Khulna', 'Bagerhat', 21.9497, 89.1833, 'Mongla, Bagerhat', 4.85, 92, 1, 'user_farhana', 310, 41, 160)
+      ON DUPLICATE KEY UPDATE place_name = VALUES(place_name);
+    `);
+
+    await p.query(`
+      INSERT INTO place_images (img_id, place_id, image_url)
+      VALUES
+        ('img_sajek', 'place_sajek', 'https://images.unsplash.com/photo-1627894483216-2138af692e32?w=800'),
+        ('img_stmartin', 'place_stmartin', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800'),
+        ('img_tanguar', 'place_tanguar', 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800'),
+        ('img_lawachara', 'place_lawachara', 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=800'),
+        ('img_keokradong', 'place_keokradong', 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800'),
+        ('img_sundarbans', 'place_sundarbans', 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800')
+      ON DUPLICATE KEY UPDATE image_url = VALUES(image_url);
+    `);
+  }
+
+  // 5. Seed Top Tour Plans
+  const [plansCount] = await p.query("SELECT COUNT(*) as count FROM tour_plans");
+  if (plansCount[0].count === 0) {
+    console.log("🌱 Seeding top ranked tour plans into lagatour_db...");
+    await p.query(`
+      INSERT INTO tour_plans (tour_plan_id, user_id, title, description, destination, starting_location, duration_days, transportation, accommodation_type, total_budget, travel_tips, travel_type, season, is_public, views_count, likes_count, comments_count, rating_avg, rating_count, saves_count)
+      VALUES
+        ('plan_sajek_3d', 'user_tariq', '3-Day Sajek Valley & Konglak Peak Cloud Walk', 'Complete itinerary covering Dighinala, Sajek Valley, Ruilui Para, and sunrise at Konglak Peak. Includes 4x4 Chander Gari transport breakdown.', 'Sajek Valley', 'Dhaka', 3, 'Car', 'Hotel', 6500.00, 'Book morning army convoy escort from Dighinala by 10 AM. Carry national ID copies.', 'Friends', 'Winter', 1, 1420, 215, 34, 4.95, 48, 142),
+        ('plan_stmartin_3d', 'user_siam', '3-Day St. Martin\\'s Island & Chera Dwip Coral Escape', 'Unwind in the blue waters of Bangladesh\\'s only coral paradise. Includes ship booking tips, cycle rentals, and night BBQ near West Beach.', 'St. Martin\\'s Island', 'Chattogram', 3, 'Multiple', 'Home_Stay', 8500.00, 'Board Keari Sindbad from Teknaf jetty. Chera Dwip speed boat ride is best during low tide.', 'Group', 'Winter', 1, 1850, 310, 48, 4.90, 62, 185),
+        ('plan_tanguar_2d', 'user_nusrat', '2-Day Tanguar Haor Luxury Houseboat & Niladri Lake', 'Cruise through the serene waters of Sunamganj haor, visit Shimul Bagan, Niladri blue lake quarry, and Jadukata river.', 'Tanguar Haor', 'Sylhet', 2, 'Bus', 'Home_Stay', 5500.00, 'Pre-book licensed houseboats in Tahirpur. Best experienced from July to October for high water.', 'Friends', 'Summer', 1, 980, 165, 26, 4.85, 35, 110),
+        ('plan_sreemangal_2d', 'user_nusrat', '2-Day Sreemangal Tea Trails & Hum Hum Trek', 'Explore the scenic rolling tea gardens of Sreemangal, Baikka Beel bird sanctuary, Lawachara forest, and 7-layer Nilkantha tea.', 'Sreemangal', 'Dhaka', 2, 'Train', 'Hostel', 4200.00, 'Take the Parabat Express train from Dhaka Kamalapur station. Hire a CNG auto for local spots.', 'Solo', 'Spring', 1, 1200, 180, 19, 4.80, 42, 95),
+        ('plan_sundarbans_4d', 'user_farhana', '4-Day Sundarbans Deep Mangrove Cruiser Expedition', 'Sail into the untamed wilderness from Mongla port to Kotka, Hiron Point, and Kochikhali canal safaris.', 'Sundarbans', 'Khulna', 4, 'Multiple', 'Home_Stay', 14500.00, 'Carry binoculars for wildlife spotting. Follow Forest Department armed guard instructions at all times.', 'Couple', 'Winter', 1, 850, 125, 18, 4.75, 28, 80)
+      ON DUPLICATE KEY UPDATE title = VALUES(title);
+    `);
+  }
+
   // Seed sample conversations & messages if empty
+
   const [convCount] = await p.query("SELECT COUNT(*) as count FROM conversations");
   if (convCount[0].count === 0) {
     console.log("🌱 Seeding initial conversations & messages into lagatour_db...");
