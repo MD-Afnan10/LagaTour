@@ -7,11 +7,13 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ||
 let socket = null;
 
 export const socketService = {
-  /**
-   * Initializes and connects the WebSocket connection
-   */
+  // Initializes and connects the WebSocket connection
   connect(user) {
-    if (socket && socket.connected) return socket;
+    const uId = user?.id || user?.user_id;
+    if (socket && socket.connected) {
+      if (uId) socket.emit("register_user", { userId: uId });
+      return socket;
+    }
 
     try {
       socket = io(SOCKET_URL, {
@@ -21,13 +23,14 @@ export const socketService = {
         reconnectionDelay: 2000,
         transports: ["websocket", "polling"],
         query: {
-          userId: user?.id || user?.user_id || "",
+          userId: uId || "",
           username: user?.username || user?.name || ""
         }
       });
 
       socket.on("connect", () => {
         console.log("🟢 Connected to LagaTour Realtime Chat Socket:", socket.id);
+        if (uId) socket.emit("register_user", { userId: uId });
       });
 
       socket.on("disconnect", (reason) => {
@@ -45,16 +48,14 @@ export const socketService = {
     }
   },
 
-  /**
-   * Get raw socket instance
-   */
+  // Get raw socket instance
+
   getSocket() {
     return socket;
   },
 
-  /**
-   * Disconnect socket cleanly
-   */
+  // Disconnect socket cleanly
+
   disconnect() {
     if (socket) {
       socket.disconnect();
@@ -62,34 +63,30 @@ export const socketService = {
     }
   },
 
-  /**
-   * Join a specific conversation room
-   */
+  // Join a specific conversation room
+   
   joinChat(conversationId, userId) {
     if (!socket || !socket.connected) return;
     socket.emit("join_chat", { conversationId, userId });
   },
 
-  /**
-   * Leave a specific conversation room
-   */
+  // Leave a specific conversation room
+   
   leaveChat(conversationId, userId) {
     if (!socket || !socket.connected) return;
     socket.emit("leave_chat", { conversationId, userId });
   },
 
-  /**
-   * Broadcast message via Socket.io
-   */
+  // Broadcast message via Socket.io
+   
   sendMessage(messagePayload) {
     if (!socket || !socket.connected) return false;
     socket.emit("send_message", messagePayload);
     return true;
   },
 
-  /**
-   * Send typing status indicator
-   */
+  //  Send typing status indicator
+   
   sendTyping(conversationId, user, isTyping) {
     if (!socket || !socket.connected) return;
     socket.emit("typing", {
@@ -100,9 +97,8 @@ export const socketService = {
     });
   },
 
-  /**
-   * Listen for incoming real-time messages
-   */
+  //  Listen for incoming real-time messages
+   
   onReceiveMessage(callback) {
     if (!socket) return () => {};
     const handler = (msg) => callback(msg);
@@ -110,9 +106,8 @@ export const socketService = {
     return () => socket.off("receive_message", handler);
   },
 
-  /**
-   * Listen for live typing indicators
-   */
+  // Listen for live typing indicators
+   
   onTyping(callback) {
     if (!socket) return () => {};
     const handler = (data) => callback(data);
@@ -120,9 +115,8 @@ export const socketService = {
     return () => socket.off("typing", handler);
   },
 
-  /**
-   * Listen for user online / offline status updates
-   */
+  // Listen for user online / offline status updates
+   
   onUserStatus(callback) {
     if (!socket) return () => {};
     const handler = (data) => callback(data);

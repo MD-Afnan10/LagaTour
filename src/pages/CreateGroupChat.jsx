@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { MOCK_USERS, MOCK_CHATS } from "../data/mockData";
@@ -12,8 +12,7 @@ import {
   ArrowLeft, 
   Sparkles, 
   CheckCircle, 
-  AlertCircle,
-  MessageSquare
+  AlertCircle
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -25,28 +24,50 @@ export default function CreateGroupChat() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [error, setError] = useState("");
+  const [allPlatformUsers, setAllPlatformUsers] = useState(MOCK_USERS);
+
+  const currentUserId = currentUser?.id || currentUser?.user_id || "user_1";
+
+  // Fetch real platform users from backend
+  useEffect(() => {
+    api.searchChatUsers(searchQuery, currentUserId)
+      .then((users) => {
+        if (users && users.length > 0) {
+          setAllPlatformUsers(users);
+        } else if (!searchQuery) {
+          setAllPlatformUsers(MOCK_USERS.filter(u => u.id !== currentUserId));
+        }
+      })
+      .catch(() => {
+        setAllPlatformUsers(MOCK_USERS.filter(u => u.id !== currentUserId));
+      });
+  }, [searchQuery, currentUserId]);
 
   // Available users to add (filtering out current logged in user)
-  const availableUsers = MOCK_USERS.filter(u => 
-    u.id !== currentUser?.id && u.username !== currentUser?.username
-  );
+  const availableUsers = allPlatformUsers.filter(u => {
+    const uId = u.id || u.user_id;
+    const uName = u.username?.toLowerCase();
+    return uId !== currentUserId && uName !== currentUser?.username?.toLowerCase();
+  });
 
   // Real-time filtered users as user types in the search field
   const filteredUsers = availableUsers.filter(user => {
     const q = searchQuery.toLowerCase().trim();
     if (!q) return true;
+    const name = user.name || [user.first_name, user.last_name].filter(Boolean).join(" ");
     return (
-      user.name.toLowerCase().includes(q) ||
-      user.username.toLowerCase().includes(q) ||
+      name?.toLowerCase().includes(q) ||
+      user.username?.toLowerCase().includes(q) ||
       (user.bio && user.bio.toLowerCase().includes(q))
     );
   });
 
   const toggleMember = (user) => {
     setError("");
-    const exists = selectedMembers.some(m => m.id === user.id || m.username === user.username);
+    const userId = user.id || user.user_id;
+    const exists = selectedMembers.some(m => (m.id || m.user_id) === userId || m.username === user.username);
     if (exists) {
-      setSelectedMembers(prev => prev.filter(m => m.id !== user.id && m.username !== user.username));
+      setSelectedMembers(prev => prev.filter(m => (m.id || m.user_id) !== userId && m.username !== user.username));
     } else {
       setSelectedMembers(prev => [...prev, user]);
     }
@@ -106,24 +127,38 @@ export default function CreateGroupChat() {
     const updatedChats = [newGroupChat, ...chatsList];
     localStorage.setItem("ts_chats", JSON.stringify(updatedChats));
 
+    const memberIds = [
+      currentUserId,
+      ...selectedMembers.map(m => m.id || m.user_id)
+    ].filter(Boolean);
+
     // Try creating on backend API
     try {
-      const memberIds = [
-        currentUser?.id || currentUser?.user_id,
-        ...selectedMembers.map(m => m.id || m.user_id)
-      ].filter(Boolean);
-
-      await api.createGroupChat({
+      const serverRes = await api.createGroupChat({
+        groupName: cleanGroupName,
         name: cleanGroupName,
         memberIds,
-        createdBy: currentUser?.id || currentUser?.user_id,
+        creator: currentUserId,
+        createdBy: currentUserId,
         avatarUrl: groupAvatar
       });
-    } catch (err) {
-      // Backend offline fallback handled gracefully
+
+      if (serverRes && (serverRes.id || serverRes.conversationId)) {
+        const finalId = serverRes.id || serverRes.conversationId;
+        if (addPoints) addPoints(25);
+        confetti({
+          particleCount: 120,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+        navigate("/chats", { state: { activeChatId: finalId } });
+        return;
+      }
+    } catch {
+      // Fallback handled smoothly
     }
 
-    addPoints(25);
+    if (addPoints) addPoints(25);
     confetti({
       particleCount: 120,
       spread: 70,
