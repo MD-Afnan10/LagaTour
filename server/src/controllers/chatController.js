@@ -619,11 +619,10 @@ export async function searchChatUsers(req, res) {
     const searchTerm = `%${cleanQ}%`;
 
     let querySql = `
-      SELECT user_id, username, first_name, last_name, profile_picture_url, bio, league_points
+      SELECT user_id, username, first_name, last_name, profile_picture_url, bio, league_points, email
       FROM users
       WHERE (account_status IS NULL OR LOWER(account_status) NOT IN ('blocked', 'suspended', 'deleted', 'banned'))
-        AND user_id NOT IN ('admin_root', 'user_tariq', 'user_nusrat', 'user_siam', 'user_tanvir', 'user_farhana', 'user_nabil', 'user_1', 'user_2', 'user_3')
-        AND (email IS NULL OR email NOT LIKE '%@laga.tour')
+        AND user_id != 'admin_root'
     `;
     const queryParams = [];
 
@@ -638,12 +637,13 @@ export async function searchChatUsers(req, res) {
         LOWER(first_name) LIKE ? OR
         LOWER(last_name) LIKE ? OR
         LOWER(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) LIKE ? OR
+        LOWER(COALESCE(email, '')) LIKE ? OR
         LOWER(COALESCE(bio, '')) LIKE ?
       )`;
-      queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
-    querySql += ` ORDER BY league_points DESC LIMIT 50`;
+    querySql += ` ORDER BY league_points DESC, created_at DESC LIMIT 100`;
 
     const rows = await query(querySql, queryParams);
     const users = (rows || []).map((r) => formatUser(r)).filter(Boolean);
