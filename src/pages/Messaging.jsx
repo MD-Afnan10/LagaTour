@@ -933,11 +933,11 @@ export default function Messaging() {
   const isCurrentChatTyping = typingUsers[activeChatId];
 
   return (
-    <div className="container mx-auto px-4 md:px-8 py-6 max-w-6xl h-[calc(100vh-80px)]">
+    <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 max-w-6xl h-[calc(100vh-80px)]">
       <div className="card bg-base-100 border border-base-200 shadow-xl flex flex-col md:flex-row h-full overflow-hidden rounded-3xl">
         
-        {/* Left Panel: Inbox & Universal Search */}
-        <div className="w-full md:w-84 border-r border-base-300 flex flex-col h-2/5 md:h-full bg-base-200/20">
+        {/* Left Panel: Inbox & Universal Search (Spacious List) */}
+        <div className="w-full md:w-88 lg:w-96 shrink-0 border-r border-base-300 flex flex-col h-2/5 md:h-full bg-base-200/20">
           
           {/* Header & Dedicated Create Group Button */}
           <div className="p-4 border-b border-base-300 space-y-3">
@@ -1343,7 +1343,7 @@ export default function Messaging() {
               onClick={() => {
                 if (activeMenuMsgId) setActiveMenuMsgId(null);
               }}
-              className="flex-1 overflow-y-auto p-4 space-y-4 bg-base-200/20"
+              className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 bg-base-200/20"
             >
             {activeChat.messages && activeChat.messages.length > 0 ? (
               (() => {
@@ -1411,22 +1411,24 @@ export default function Messaging() {
                           </div>
                         )}
 
-                        <div className={`chat-bubble text-xs shadow-sm leading-relaxed p-3 max-w-sm sm:max-w-md rounded-2xl relative group ${
+                        <div className={`chat-bubble text-xs shadow-sm leading-relaxed ${
+                          msg.mediaUrl && !msg.text ? 'p-1.5' : 'p-3'
+                        } max-w-sm sm:max-w-md md:max-w-lg rounded-2xl relative group ${
                           isMe 
                             ? (msg.isDeleted ? 'bg-base-200 text-base-content/60 border border-base-300 italic' : 'bg-primary text-white font-medium') 
                             : (msg.isDeleted ? 'bg-base-200/60 text-base-content/50 border border-base-300 italic' : 'bg-base-100 text-base-content border border-base-200 font-medium')
                         }`}>
-                          {/* 3-Dot Options Button on Hover */}
+                          {/* 3-Dot Options Button on Hover / Tap */}
                           {!msg.isDeleted && !msg.isPending && (
-                            <div className={`absolute -top-2 ${isMe ? '-left-8' : '-right-8'} opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-20`}>
+                            <div className={`absolute top-1.5 ${isMe ? '-left-8' : '-right-8'} opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-30`}>
                               <div className="relative">
                                 <button 
-                                  type="button"
+                                  type="button" 
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setActiveMenuMsgId(activeMenuMsgId === msg.id ? null : msg.id);
                                   }}
-                                  className="btn btn-circle btn-xs bg-base-100 hover:bg-base-200 text-base-content shadow-md border border-base-300"
+                                  className="btn btn-circle btn-xs bg-base-100/90 backdrop-blur-xs hover:bg-base-200 text-base-content shadow-md border border-base-300"
                                   title="Message options"
                                 >
                                   <MoreVertical className="w-3.5 h-3.5" />
@@ -1436,27 +1438,29 @@ export default function Messaging() {
                                 {activeMenuMsgId === msg.id && (
                                   <div 
                                     onClick={(e) => e.stopPropagation()}
-                                    className={`absolute ${isMe ? 'right-0' : 'left-0'} top-7 z-30 w-36 bg-base-100 rounded-2xl shadow-xl border border-base-200 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 text-base-content`}
+                                    className={`absolute ${isMe ? 'right-0' : 'left-0'} top-7 z-40 w-36 bg-base-100 rounded-2xl shadow-xl border border-base-200 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 text-base-content`}
                                   >
-                                    {isMe && (
+                                    {isMe && msg.text && !msg.isDeleted && (
                                       <button
                                         type="button"
                                         onClick={() => handleStartEdit(msg)}
                                         className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-base-content hover:bg-primary/10 hover:text-primary rounded-xl font-bold transition-colors"
                                       >
                                         <Pencil className="w-3.5 h-3.5 text-primary" />
-                                        <span>Edit</span>
+                                        <span>Edit text</span>
                                       </button>
                                     )}
 
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCopyMessageText(msg)}
-                                      className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-base-content hover:bg-base-200 rounded-xl font-bold transition-colors"
-                                    >
-                                      <Copy className="w-3.5 h-3.5 opacity-70" />
-                                      <span>{copiedMsgId === msg.id ? "Copied! ✓" : "Copy text"}</span>
-                                    </button>
+                                    {msg.text && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyMessageText(msg)}
+                                        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-base-content hover:bg-base-200 rounded-xl font-bold transition-colors"
+                                      >
+                                        <Copy className="w-3.5 h-3.5 opacity-70" />
+                                        <span>{copiedMsgId === msg.id ? "Copied! ✓" : "Copy text"}</span>
+                                      </button>
+                                    )}
 
                                     {isMe && (
                                       <button
@@ -1468,7 +1472,7 @@ export default function Messaging() {
                                         className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-error hover:bg-error/10 rounded-xl font-bold transition-colors"
                                       >
                                         <Trash2 className="w-3.5 h-3.5" />
-                                        <span>Delete</span>
+                                        <span>Delete for all</span>
                                       </button>
                                     )}
                                   </div>
@@ -1506,7 +1510,7 @@ export default function Messaging() {
                           {msg.mediaUrl && !msg.isDeleted && (
                             <div 
                               onClick={() => setLightboxImageUrl(msg.mediaUrl)}
-                              className={`rounded-xl overflow-hidden border border-black/10 cursor-pointer group/img relative shadow-sm max-w-full ${
+                              className={`rounded-xl overflow-hidden border border-black/10 cursor-pointer group/img relative shadow-sm max-w-full inline-block ${
                                 msg.text ? 'mb-2' : ''
                               }`}
                               title="Click to view full image"
@@ -1514,7 +1518,7 @@ export default function Messaging() {
                               <img 
                                 src={msg.mediaUrl} 
                                 alt="Shared attachment" 
-                                className="w-full max-h-72 min-w-[140px] sm:min-w-[200px] object-cover rounded-xl transition-transform duration-200 group-hover/img:scale-[1.01]" 
+                                className="max-h-64 sm:max-h-72 max-w-full w-auto object-cover rounded-xl transition-transform duration-200 group-hover/img:scale-[1.01]" 
                                 loading="lazy"
                               />
                               <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100 rounded-xl">
