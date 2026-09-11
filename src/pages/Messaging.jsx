@@ -245,8 +245,6 @@ export default function Messaging() {
   });
 
   const [messageText, setMessageText] = useState("");
-  const [mediaUrlInput, setMediaUrlInput] = useState("");
-  const [showMediaModal, setShowMediaModal] = useState(false);
   const [selectedImageBase64, setSelectedImageBase64] = useState(null);
   const [isCompressingImage, setIsCompressingImage] = useState(false);
   const [lightboxImageUrl, setLightboxImageUrl] = useState(null);
@@ -803,10 +801,10 @@ export default function Messaging() {
       return handleSaveEdit(editingMessage.id, messageText);
     }
 
-    if (!messageText.trim() && !selectedImageBase64 && !mediaUrlInput.trim()) return;
+    if (!messageText.trim() && !selectedImageBase64) return;
 
     const textContent = messageText.trim();
-    const mediaContent = selectedImageBase64 || mediaUrlInput.trim() || undefined;
+    const mediaContent = selectedImageBase64 || undefined;
     const msgType = mediaContent ? "image" : "text";
     const nowIso = new Date().toISOString();
     const tempId = `temp_msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
@@ -842,8 +840,6 @@ export default function Messaging() {
 
     setMessageText("");
     setSelectedImageBase64(null);
-    setMediaUrlInput("");
-    setShowMediaModal(false);
 
     // 2. Stop typing indicator
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -1653,26 +1649,6 @@ export default function Messaging() {
             </div>
           )}
 
-          {/* Web Image URL Drawer / Modal */}
-          {showMediaModal && !editingMessage && (
-            <div className="p-3 bg-base-200/70 border-t border-base-300 flex items-center gap-2">
-              <input 
-                type="url" 
-                placeholder="Or paste image / photo web link (e.g. https://...)..."
-                className="input input-sm input-bordered flex-1 rounded-xl text-xs bg-base-100"
-                value={mediaUrlInput}
-                onChange={(e) => setMediaUrlInput(e.target.value)}
-              />
-              <button 
-                type="button" 
-                onClick={() => setShowMediaModal(false)}
-                className="btn btn-xs btn-ghost"
-              >
-                Close
-              </button>
-            </div>
-          )}
-
           {/* Editing Mode Banner */}
           {editingMessage && (
             <div className="px-4 py-2 bg-primary/10 border-t border-primary/20 flex items-center justify-between text-xs">
@@ -1703,8 +1679,8 @@ export default function Messaging() {
             className="p-3 sm:p-4 border-t border-base-300 bg-base-100 flex gap-2 items-center"
           >
             {!editingMessage && (
-              <div className="flex items-center gap-0.5">
-                {/* Upload Photo Button (Device Gallery / Files) */}
+              <div className="flex items-center">
+                {/* Upload Photo Button (Device Gallery / Files / Screen Paste) */}
                 <button 
                   type="button" 
                   onClick={() => fileInputRef.current?.click()}
@@ -1717,16 +1693,6 @@ export default function Messaging() {
                   ) : (
                     <ImageIcon className="w-4 h-4" />
                   )}
-                </button>
-
-                {/* Optional Web Link URL Button */}
-                <button 
-                  type="button" 
-                  onClick={() => setShowMediaModal(!showMediaModal)}
-                  className={`btn btn-sm btn-circle btn-ghost text-xs ${showMediaModal ? 'text-primary' : 'text-base-content/40'}`}
-                  title="Attach via web image link"
-                >
-                  <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
@@ -1763,7 +1729,7 @@ export default function Messaging() {
 
             <button 
               type="submit" 
-              disabled={!messageText.trim() && !selectedImageBase64 && !mediaUrlInput.trim()}
+              disabled={!messageText.trim() && !selectedImageBase64}
               className="btn btn-sm sm:btn-md btn-primary text-white rounded-2xl text-xs gap-1.5 px-4 font-bold shadow-md shadow-primary/20"
             >
               {editingMessage ? (
