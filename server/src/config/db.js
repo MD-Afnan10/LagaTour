@@ -262,6 +262,8 @@ export async function initDatabase() {
         \`media_url\` LONGTEXT DEFAULT NULL,
         \`message_type\` ENUM('text', 'image', 'video', 'system') NOT NULL DEFAULT 'text',
         \`is_read\` TINYINT(1) DEFAULT 0,
+        \`is_deleted\` TINYINT(1) DEFAULT 0,
+        \`is_edited\` TINYINT(1) DEFAULT 0,
         \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
         \`updated_at\` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (\`message_id\`),
@@ -272,6 +274,23 @@ export async function initDatabase() {
         CONSTRAINT \`fk_msg_sender\` FOREIGN KEY (\`sender_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
+
+    // Ensure is_deleted, is_edited exist and message_text is NULLABLE for pure image attachments
+    try {
+      await p.query(`ALTER TABLE \`messages\` MODIFY COLUMN \`message_text\` TEXT NULL;`);
+    } catch (colErr) {
+      // Ignore
+    }
+    try {
+      await p.query(`ALTER TABLE \`messages\` ADD COLUMN \`is_deleted\` TINYINT(1) DEFAULT 0;`);
+    } catch (colErr) {
+      // Column already exists - ignore
+    }
+    try {
+      await p.query(`ALTER TABLE \`messages\` ADD COLUMN \`is_edited\` TINYINT(1) DEFAULT 0;`);
+    } catch (colErr) {
+      // Column already exists - ignore
+    }
 
     // 13. Create Divisions table
     await p.query(`

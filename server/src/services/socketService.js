@@ -86,6 +86,45 @@ export function initSocket(httpServer) {
       io.to(conversationId).emit("receive_message", messageData);
     });
 
+    // Mark messages as read / seen via socket
+    socket.on("mark_read", ({ conversationId, userId, readerName, readerAvatar }) => {
+      if (!conversationId) return;
+      const readData = {
+        conversationId,
+        userId,
+        readerName,
+        readerAvatar,
+        readAt: new Date().toISOString()
+      };
+      // Broadcast to everyone in the conversation room
+      socket.to(conversationId).emit("messages_read", readData);
+    });
+
+    // Edit message via socket
+    socket.on("edit_message", ({ conversationId, messageId, text, userId }) => {
+      if (!conversationId || !messageId) return;
+      const editData = {
+        conversationId,
+        messageId,
+        text,
+        isEdited: true,
+        updatedAt: new Date().toISOString()
+      };
+      io.to(conversationId).emit("message_edited", editData);
+    });
+
+    // Delete message via socket
+    socket.on("delete_message", ({ conversationId, messageId, userId }) => {
+      if (!conversationId || !messageId) return;
+      const deleteData = {
+        conversationId,
+        messageId,
+        deletedBy: userId,
+        isDeleted: true
+      };
+      io.to(conversationId).emit("message_deleted", deleteData);
+    });
+
     socket.on("disconnect", () => {
       console.log(`❌ [Socket.io] Client disconnected: ${socket.id}`);
     });
