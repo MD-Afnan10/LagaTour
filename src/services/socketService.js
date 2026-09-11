@@ -97,8 +97,39 @@ export const socketService = {
     });
   },
 
-  //  Listen for incoming real-time messages
-   
+  // Send mark as read event via Socket.io
+  markAsRead(conversationId, user) {
+    if (!socket || !socket.connected) return;
+    socket.emit("mark_read", {
+      conversationId,
+      userId: user?.id || user?.user_id,
+      readerName: user?.name || user?.username || "Traveler",
+      readerAvatar: user?.avatar || user?.profilePictureUrl
+    });
+  },
+
+  // Edit message event via Socket.io
+  editMessage(conversationId, messageId, text, userId) {
+    if (!socket || !socket.connected) return;
+    socket.emit("edit_message", {
+      conversationId,
+      messageId,
+      text,
+      userId
+    });
+  },
+
+  // Delete message event via Socket.io
+  deleteMessage(conversationId, messageId, userId) {
+    if (!socket || !socket.connected) return;
+    socket.emit("delete_message", {
+      conversationId,
+      messageId,
+      userId
+    });
+  },
+
+  // Listen for incoming real-time messages
   onReceiveMessage(callback) {
     if (!socket) return () => {};
     const handler = (msg) => callback(msg);
@@ -106,8 +137,31 @@ export const socketService = {
     return () => socket.off("receive_message", handler);
   },
 
+  // Listen for real-time message edited events
+  onMessageEdited(callback) {
+    if (!socket) return () => {};
+    const handler = (data) => callback(data);
+    socket.on("message_edited", handler);
+    return () => socket.off("message_edited", handler);
+  },
+
+  // Listen for real-time messages read receipts
+  onMessagesRead(callback) {
+    if (!socket) return () => {};
+    const handler = (data) => callback(data);
+    socket.on("messages_read", handler);
+    return () => socket.off("messages_read", handler);
+  },
+
+  // Listen for real-time message deleted events
+  onMessageDeleted(callback) {
+    if (!socket) return () => {};
+    const handler = (data) => callback(data);
+    socket.on("message_deleted", handler);
+    return () => socket.off("message_deleted", handler);
+  },
+
   // Listen for live typing indicators
-   
   onTyping(callback) {
     if (!socket) return () => {};
     const handler = (data) => callback(data);
@@ -116,7 +170,6 @@ export const socketService = {
   },
 
   // Listen for user online / offline status updates
-   
   onUserStatus(callback) {
     if (!socket) return () => {};
     const handler = (data) => callback(data);

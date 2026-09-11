@@ -345,6 +345,46 @@ export const api = {
     return data.message;
   },
 
+  /**
+   * Mark all messages in a conversation as read by the user
+   */
+  async markConversationAsRead(conversationId, userId) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/chats/${encodeURIComponent(conversationId)}/read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId })
+      });
+      return await handleResponse(res);
+    } catch (err) {
+      console.warn("markConversationAsRead note:", err.message);
+      return null;
+    }
+  },
+
+  /**
+   * Edit a message in a conversation
+   */
+  async editChatMessage(conversationId, messageId, text, userId) {
+    const res = await fetch(`${API_BASE_URL}/chats/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, userId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete a message from a conversation
+   */
+  async deleteChatMessage(conversationId, messageId, userId) {
+    const res = await fetch(`${API_BASE_URL}/chats/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
+    });
+    return await handleResponse(res);
+  },
 
   /**
    * Search all travelers across the platform by username or full name

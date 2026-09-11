@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { MOCK_CHATS, MOCK_USERS } from "../data/mockData";
 import socketService from "../services/socketService";
 import api from "../services/api";
 import { 
@@ -16,61 +15,169 @@ import {
   User, 
   Plus, 
   Image as ImageIcon, 
+  Check,
   CheckCheck, 
-  X,
-  Compass
+  Clock, 
+  Trash2, 
+  AlertCircle, 
+  X, 
+  Compass, 
+  MoreVertical, 
+  Pencil, 
+  Copy,
+  Download,
+  Loader2
 } from "lucide-react";
 
 /**
+ * Smart Client-Side Image Compression to Base64 (Data URL)
+ * Automatically resizes & compresses heavy 5-10MB mobile/camera photos into light ~60-120KB Base64 strings.
+ */
+function compressImageToBase64(file, maxWidth = 1000, maxHeight = 1000, quality = 0.78) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith("image/")) {
+      return reject(new Error("Selected file is not an image."));
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const mimeType = file.type === "image/png" ? "image/png" : "image/jpeg";
+        const base64Data = canvas.toDataURL(mimeType, quality);
+        resolve(base64Data);
+      };
+      img.onerror = (err) => reject(err);
+      img.src = e.target.result;
+    };
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * Format timestamp accurately for sidebar conversation list
+ * - Today: "05:05 pm"
+ * - Yesterday: "Yesterday"
+ * - Older in current year: "Sep 10"
+ * - Older in previous year: "Sep 10, 2025"
  */
 function formatChatTimestamp(timestamp) {
   if (!timestamp) return "";
   
-  // If it's a relative time like "Just now" or "Yesterday", check if it's a real Date
   const date = new Date(timestamp);
   if (isNaN(date.getTime())) {
-    // If not a parseable date, return clean trimmed string
     return timestamp;
   }
 
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
-  const diffDays = Math.floor(diffMs / 86400000);
 
   if (diffMinutes < 1) return "Just now";
   
-  // If today -> show 12-hour time, e.g. "01:52 pm"
+  // Today -> 12-hour time, e.g. "01:52 pm"
   const isToday = now.toDateString() === date.toDateString();
   if (isToday) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
   }
 
-  // If yesterday
+  // Yesterday
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
   if (yesterday.toDateString() === date.toDateString()) {
     return "Yesterday";
   }
 
-  // Within last 7 days -> Day name, e.g. "Sun", "Mon"
-  if (diffDays < 7) {
-    return date.toLocaleDateString([], { weekday: 'short' });
+  // Older in current year -> "Sep 10"
+  const isThisYear = now.getFullYear() === date.getFullYear();
+  if (isThisYear) {
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   }
 
-  // Older -> "Aug 26"
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  // Older year -> "Sep 10, 2025"
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**
  * Format bubble message timestamp
+ * - Today: "05:05 pm"
+ * - Yesterday: "Yesterday, 05:05 pm"
+ * - Older in current year: "Sep 10, 05:05 pm"
+ * - Older in previous year: "Sep 10, 2025, 05:05 pm"
  */
 function formatBubbleTime(timestamp) {
   if (!timestamp) return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
   const date = new Date(timestamp);
   if (isNaN(date.getTime())) return timestamp;
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+
+  const now = new Date();
+  const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+
+  const isToday = now.toDateString() === date.toDateString();
+  if (isToday) {
+    return timeStr;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (yesterday.toDateString() === date.toDateString()) {
+    return `Yesterday, ${timeStr}`;
+  }
+
+  const isThisYear = now.getFullYear() === date.getFullYear();
+  if (isThisYear) {
+    const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return `${dateStr}, ${timeStr}`;
+  }
+
+  const fullDateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${fullDateStr}, ${timeStr}`;
+}
+
+/**
+ * Helper to get date header separator for messages list
+ */
+function getDateDividerLabel(timestamp) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return null;
+
+  const now = new Date();
+  if (now.toDateString() === date.toDateString()) {
+    return "Today";
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (yesterday.toDateString() === date.toDateString()) {
+    return "Yesterday";
+  }
+
+  const isThisYear = now.getFullYear() === date.getFullYear();
+  if (isThisYear) {
+    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**
@@ -112,11 +219,12 @@ export default function Messaging() {
   const location = useLocation();
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const currentUserId = currentUser?.id || currentUser?.user_id || "user_1";
   const storageKey = `ts_chats_${currentUserId}`;
 
-  // Chats list state (User-scoped conversation list)
+  // Chats list state (User-scoped conversation list from DB/cache)
   const [chats, setChats] = useState(() => {
     const saved = localStorage.getItem(`ts_chats_${currentUserId}`);
     if (saved) {
@@ -127,22 +235,28 @@ export default function Messaging() {
         console.error("Failed to parse saved chats", err);
       }
     }
-    return deduplicateChats(MOCK_CHATS, currentUserId);
+    return [];
   });
 
-  // All Platform Travelers state for universal search
-  const [allTravelers, setAllTravelers] = useState(MOCK_USERS);
+  // All Platform Travelers state from MySQL database
+  const [allTravelers, setAllTravelers] = useState([]);
   const [activeChatId, setActiveChatId] = useState(() => {
-    return location.state?.activeChatId || chats[0]?.id || "chat_1";
+    return location.state?.activeChatId || chats[0]?.id || "";
   });
 
   const [messageText, setMessageText] = useState("");
-  const [mediaUrlInput, setMediaUrlInput] = useState("");
-  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [selectedImageBase64, setSelectedImageBase64] = useState(null);
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState(null);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [typingUsers, setTypingUsers] = useState({});
   const [onlineUsers, setOnlineUsers] = useState({});
   const [isConnected, setIsConnected] = useState(false);
+  const [deleteConfirmMsgId, setDeleteConfirmMsgId] = useState(null);
+  const [activeMenuMsgId, setActiveMenuMsgId] = useState(null);
+  const [editingMessage, setEditingMessage] = useState(null);
+  const [copiedMsgId, setCopiedMsgId] = useState(null);
 
   // 1. Initialize Socket.io connection on mount
   useEffect(() => {
@@ -162,6 +276,78 @@ export default function Messaging() {
       // Listen for real-time messages
       const cleanupMsg = socketService.onReceiveMessage((incomingMsg) => {
         handleIncomingMessage(incomingMsg);
+      });
+
+      // Listen for message edit
+      const cleanupEdit = socketService.onMessageEdited((editData) => {
+        if (!editData?.conversationId || !editData?.messageId) return;
+        setChats((prev) =>
+          prev.map((c) => {
+            if (c.id === editData.conversationId) {
+              const updatedMsgs = (c.messages || []).map((m) =>
+                m.id === editData.messageId ? { ...m, text: editData.text, isEdited: true, updatedAt: editData.updatedAt } : m
+              );
+              const updatedLastMsg = c.lastMessage && c.lastMessage.id === editData.messageId
+                ? { ...c.lastMessage, text: editData.text, isEdited: true }
+                : c.lastMessage;
+              return {
+                ...c,
+                messages: updatedMsgs,
+                lastMessage: updatedLastMsg
+              };
+            }
+            return c;
+          })
+        );
+      });
+
+      // Listen for read receipts (Seen by recipient)
+      const cleanupRead = socketService.onMessagesRead((readData) => {
+        if (!readData?.conversationId) return;
+        setChats((prev) =>
+          prev.map((c) => {
+            if (c.id === readData.conversationId) {
+              const updatedMsgs = (c.messages || []).map((m) =>
+                m.senderId === currentUserId ? { ...m, isRead: true } : m
+              );
+              return {
+                ...c,
+                messages: updatedMsgs,
+                lastMessage: c.lastMessage && c.lastMessage.senderId === currentUserId ? { ...c.lastMessage, isRead: true } : c.lastMessage,
+                lastReadBy: {
+                  userId: readData.userId,
+                  readerName: readData.readerName,
+                  readerAvatar: readData.readerAvatar,
+                  readAt: readData.readAt
+                }
+              };
+            }
+            return c;
+          })
+        );
+      });
+
+      // Listen for message deletion
+      const cleanupDelete = socketService.onMessageDeleted((delData) => {
+        if (!delData?.conversationId || !delData?.messageId) return;
+        setChats((prev) =>
+          prev.map((c) => {
+            if (c.id === delData.conversationId) {
+              const updatedMsgs = (c.messages || []).map((m) =>
+                m.id === delData.messageId ? { ...m, isDeleted: true, text: "This message was deleted", mediaUrl: null } : m
+              );
+              const updatedLastMsg = c.lastMessage && c.lastMessage.id === delData.messageId
+                ? { ...c.lastMessage, isDeleted: true, text: "This message was deleted", mediaUrl: null }
+                : c.lastMessage;
+              return {
+                ...c,
+                messages: updatedMsgs,
+                lastMessage: updatedLastMsg
+              };
+            }
+            return c;
+          })
+        );
       });
 
       // Listen for typing events
@@ -187,32 +373,26 @@ export default function Messaging() {
         socket.off("connect", handleConnect);
         socket.off("disconnect", handleDisconnect);
         cleanupMsg();
+        cleanupEdit();
+        cleanupRead();
+        cleanupDelete();
         cleanupTyping();
         cleanupStatus();
       };
     }
-  }, [currentUser]);
+  }, [currentUser, currentUserId]);
 
-  // 2. Fetch All Platform Travelers for Universal Search
+  // 2. Fetch All Registered Platform Travelers for Search and Discovery
   useEffect(() => {
     api.searchChatUsers(searchQuery, currentUserId)
       .then((users) => {
         if (Array.isArray(users)) {
           setAllTravelers(users);
-        } else if (!searchQuery) {
-          setAllPlatformTravelersFallback();
         }
       })
-      .catch(() => {
-        if (!searchQuery) {
-          setAllPlatformTravelersFallback();
-        }
+      .catch((err) => {
+        console.warn("searchChatUsers note:", err.message);
       });
-
-    function setAllPlatformTravelersFallback() {
-      const fallback = MOCK_USERS.filter(u => (u.id || u.user_id) !== currentUserId);
-      setAllTravelers(fallback);
-    }
   }, [searchQuery, currentUserId]);
 
   // 3. Handle targetUser navigation from UserProfile or external links
@@ -253,18 +433,27 @@ export default function Messaging() {
       });
   }, [currentUserId]);
 
-  // 5. Join active conversation room on change
+  // 5. Join active conversation room on change and mark as read
   useEffect(() => {
     if (!activeChatId || !currentUser) return;
 
     socketService.joinChat(activeChatId, currentUserId);
+
+    // Mark as read in backend and broadcast to sender
+    api.markConversationAsRead(activeChatId, currentUserId);
+    socketService.markAsRead(activeChatId, currentUser);
+
+    // Clear local unread count for this conversation
+    setChats((prev) =>
+      prev.map((c) => (c.id === activeChatId ? { ...c, unreadCount: 0 } : c))
+    );
 
     // Fetch fresh message history from backend
     api.fetchChatMessages(activeChatId, currentUserId)
       .then((msgs) => {
         if (msgs && msgs.length > 0) {
           setChats((prev) =>
-            prev.map((c) => (c.id === activeChatId ? { ...c, messages: msgs } : c))
+            prev.map((c) => (c.id === activeChatId ? { ...c, messages: msgs, unreadCount: 0 } : c))
           );
         }
       })
@@ -356,6 +545,8 @@ export default function Messaging() {
     const msgText = incomingMsg.message_text || incomingMsg.text || "";
     const msgMedia = incomingMsg.media_url || incomingMsg.mediaUrl;
     const msgCreatedAt = incomingMsg.created_at || incomingMsg.createdAt || new Date().toISOString();
+    const isMsgDeleted = Boolean(incomingMsg.is_deleted || incomingMsg.isDeleted);
+    const isMsgRead = Boolean(incomingMsg.is_read || incomingMsg.isRead || (targetConvId === activeChatId && msgSenderId !== currentUserId));
 
     const formattedMsg = {
       id: msgId,
@@ -363,11 +554,19 @@ export default function Messaging() {
       senderId: msgSenderId,
       senderName: incomingMsg.sender_name || incomingMsg.senderName || "Traveler",
       senderAvatar: incomingMsg.sender_avatar || incomingMsg.senderAvatar || incomingMsg.avatar,
-      text: msgText,
-      mediaUrl: msgMedia,
+      text: isMsgDeleted ? "This message was deleted" : msgText,
+      mediaUrl: isMsgDeleted ? null : msgMedia,
+      isDeleted: isMsgDeleted,
+      isRead: isMsgRead,
       createdAt: msgCreatedAt,
       time: formatBubbleTime(msgCreatedAt)
     };
+
+    // If incoming message is for the currently open conversation, mark as read immediately
+    if (targetConvId === activeChatId && msgSenderId !== currentUserId) {
+      api.markConversationAsRead(targetConvId, currentUserId);
+      socketService.markAsRead(targetConvId, currentUser);
+    }
 
     setChats((prevChats) => {
       const chatIndex = prevChats.findIndex((c) => c.id === targetConvId);
@@ -384,7 +583,7 @@ export default function Messaging() {
         // 2. If message is from ME, match and replace the temporary optimistic message
         if (msgSenderId === currentUserId) {
           const optimisticIndex = currentMsgs.findIndex(
-            (m) => m.senderId === currentUserId && m.text === formattedMsg.text && (m.isPending || m.id.startsWith("temp_"))
+            (m) => m.senderId === currentUserId && (m.isPending || m.id.startsWith("temp_")) && (m.text === formattedMsg.text || (!m.text && !formattedMsg.text) || (m.mediaUrl && formattedMsg.mediaUrl))
           );
           if (optimisticIndex !== -1) {
             updatedMsgs[optimisticIndex] = formattedMsg;
@@ -395,10 +594,13 @@ export default function Messaging() {
           updatedMsgs.push(formattedMsg);
         }
 
+        const shouldIncrementUnread = targetConvId !== activeChatId && msgSenderId !== currentUserId;
+
         const updatedChat = {
           ...chat,
           updatedAt: msgCreatedAt,
           lastMessage: formattedMsg,
+          unreadCount: shouldIncrementUnread ? (chat.unreadCount || 0) + 1 : 0,
           messages: updatedMsgs
         };
 
@@ -427,6 +629,7 @@ export default function Messaging() {
             avatar: incomingMsg.sender_avatar || incomingMsg.senderAvatar || incomingMsg.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${msgSenderId}`
           },
           lastMessage: formattedMsg,
+          unreadCount: targetConvId !== activeChatId ? 1 : 0,
           updatedAt: msgCreatedAt,
           createdAt: msgCreatedAt,
           messages: [formattedMsg]
@@ -435,6 +638,39 @@ export default function Messaging() {
         return deduplicateChats([newIncomingChat, ...prevChats], currentUserId);
       }
     });
+  };
+
+  // Delete message handler (Real-time & DB)
+  const handleDeleteMessage = async (messageId) => {
+    if (!activeChatId || !messageId) return;
+
+    // 1. Optimistic update in UI
+    setChats((prev) =>
+      prev.map((c) => {
+        if (c.id === activeChatId) {
+          const updatedMsgs = (c.messages || []).map((m) =>
+            m.id === messageId ? { ...m, isDeleted: true, text: "This message was deleted", mediaUrl: null } : m
+          );
+          const updatedLast = c.lastMessage && c.lastMessage.id === messageId
+            ? { ...c.lastMessage, isDeleted: true, text: "This message was deleted", mediaUrl: null }
+            : c.lastMessage;
+          return { ...c, messages: updatedMsgs, lastMessage: updatedLast };
+        }
+        return c;
+      })
+    );
+
+    setDeleteConfirmMsgId(null);
+
+    // 2. Real-time Socket.io broadcast
+    socketService.deleteMessage(activeChatId, messageId, currentUserId);
+
+    // 3. MySQL Database Delete
+    try {
+      await api.deleteChatMessage(activeChatId, messageId, currentUserId);
+    } catch (err) {
+      console.warn("Delete message failed on backend:", err.message);
+    }
   };
 
   const activeChat = chats.find((c) => c.id === activeChatId) || (chats.length > 0 ? chats[0] : null);
@@ -453,13 +689,123 @@ export default function Messaging() {
     }
   };
 
-  // Send message handler (Single source of truth, Zero Duplication)
+  // Edit message start & cancel handlers
+  // Edit message start & cancel handlers
+  const handleStartEdit = (msg) => {
+    if (!msg || msg.isDeleted) return;
+    setEditingMessage({ id: msg.id, text: msg.text });
+    setMessageText(msg.text);
+    setActiveMenuMsgId(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setMessageText("");
+  };
+
+  // Copy message text to clipboard
+  const handleCopyMessageText = (msg) => {
+    if (msg?.text && navigator.clipboard) {
+      navigator.clipboard.writeText(msg.text);
+      setCopiedMsgId(msg.id);
+      setTimeout(() => setCopiedMsgId(null), 2000);
+    }
+    setActiveMenuMsgId(null);
+  };
+
+  // Image file select handler (Device gallery / file manager -> Compressed Base64)
+  const handleImageFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCompressingImage(true);
+    try {
+      const compressedBase64 = await compressImageToBase64(file);
+      setSelectedImageBase64(compressedBase64);
+    } catch (err) {
+      console.error("Image compression error:", err);
+      alert("Failed to process image: " + err.message);
+    } finally {
+      setIsCompressingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Paste image handler (Ctrl + V)
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          setIsCompressingImage(true);
+          try {
+            const compressedBase64 = await compressImageToBase64(file);
+            setSelectedImageBase64(compressedBase64);
+          } catch (err) {
+            console.error("Pasted image compression error:", err);
+          } finally {
+            setIsCompressingImage(false);
+          }
+          break;
+        }
+      }
+    }
+  };
+
+  // Save edited message handler (Real-time & DB)
+  const handleSaveEdit = async (messageId, newText) => {
+    if (!activeChatId || !messageId || !newText.trim()) return;
+    const cleanText = newText.trim();
+    const nowIso = new Date().toISOString();
+
+    // 1. Optimistic update in UI
+    setChats((prev) =>
+      prev.map((c) => {
+        if (c.id === activeChatId) {
+          const updatedMsgs = (c.messages || []).map((m) =>
+            m.id === messageId ? { ...m, text: cleanText, isEdited: true, updatedAt: nowIso } : m
+          );
+          const updatedLast = c.lastMessage && c.lastMessage.id === messageId
+            ? { ...c.lastMessage, text: cleanText, isEdited: true }
+            : c.lastMessage;
+          return { ...c, messages: updatedMsgs, lastMessage: updatedLast };
+        }
+        return c;
+      })
+    );
+
+    setEditingMessage(null);
+    setMessageText("");
+
+    // 2. Real-time Socket.io broadcast
+    socketService.editMessage(activeChatId, messageId, cleanText, currentUserId);
+
+    // 3. MySQL Database Update
+    try {
+      await api.editChatMessage(activeChatId, messageId, cleanText, currentUserId);
+    } catch (err) {
+      console.warn("Edit message failed on backend:", err.message);
+    }
+  };
+
+  // Send message handler (Single source of truth, Zero Duplication, Base64 Image Support)
   const handleSendMessage = async (e) => {
     if (e) e.preventDefault();
-    if (!messageText.trim() && !mediaUrlInput.trim()) return;
+
+    if (editingMessage) {
+      if (!messageText.trim()) return;
+      return handleSaveEdit(editingMessage.id, messageText);
+    }
+
+    if (!messageText.trim() && !selectedImageBase64) return;
 
     const textContent = messageText.trim();
-    const mediaContent = mediaUrlInput.trim() || undefined;
+    const mediaContent = selectedImageBase64 || undefined;
+    const msgType = mediaContent ? "image" : "text";
     const nowIso = new Date().toISOString();
     const tempId = `temp_msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
 
@@ -471,6 +817,7 @@ export default function Messaging() {
       senderAvatar: currentUser?.avatar || currentUser?.profilePictureUrl,
       text: textContent,
       mediaUrl: mediaContent,
+      type: msgType,
       createdAt: nowIso,
       time: formatBubbleTime(nowIso),
       isPending: true
@@ -492,8 +839,7 @@ export default function Messaging() {
     );
 
     setMessageText("");
-    setMediaUrlInput("");
-    setShowMediaModal(false);
+    setSelectedImageBase64(null);
 
     // 2. Stop typing indicator
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -507,7 +853,8 @@ export default function Messaging() {
         senderAvatar: currentUser?.avatar || currentUser?.profilePictureUrl,
         username: currentUser?.username,
         text: textContent,
-        mediaUrl: mediaContent
+        mediaUrl: mediaContent,
+        messageType: msgType
       });
 
       if (savedMsg && savedMsg.id) {
@@ -533,6 +880,7 @@ export default function Messaging() {
         senderAvatar: currentUser?.avatar,
         text: textContent,
         mediaUrl: mediaContent,
+        messageType: msgType,
         created_at: nowIso
       });
     }
@@ -585,11 +933,11 @@ export default function Messaging() {
   const isCurrentChatTyping = typingUsers[activeChatId];
 
   return (
-    <div className="container mx-auto px-4 md:px-8 py-6 max-w-6xl h-[calc(100vh-80px)]">
+    <div className="container mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 max-w-6xl h-[calc(100vh-80px)]">
       <div className="card bg-base-100 border border-base-200 shadow-xl flex flex-col md:flex-row h-full overflow-hidden rounded-3xl">
         
-        {/* Left Panel: Inbox & Universal Search */}
-        <div className="w-full md:w-84 border-r border-base-300 flex flex-col h-2/5 md:h-full bg-base-200/20">
+        {/* Left Panel: Inbox & Universal Search (Spacious List) */}
+        <div className="w-full md:w-88 lg:w-96 shrink-0 border-r border-base-300 flex flex-col h-2/5 md:h-full bg-base-200/20">
           
           {/* Header & Dedicated Create Group Button */}
           <div className="p-4 border-b border-base-300 space-y-3">
@@ -694,22 +1042,33 @@ export default function Messaging() {
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-baseline">
                               <div className="flex items-center gap-1.5 min-w-0">
-                                <h4 className="font-bold text-xs truncate m-0">{chat.user?.name || "Chat Room"}</h4>
+                                <h4 className={`text-xs truncate m-0 ${chat.unreadCount > 0 && !isActive ? 'font-black text-base-content' : 'font-bold'}`}>
+                                  {chat.user?.name || "Chat Room"}
+                                </h4>
                                 {chat.isGroup && (
                                   <span className={`badge badge-xs text-[8px] font-bold ${isActive ? 'bg-white/20 text-white border-none' : 'badge-warning'}`}>
                                     Group
                                   </span>
                                 )}
                               </div>
-                              <span className={`text-[9px] shrink-0 ml-1 font-medium ${isActive ? 'text-white/80' : 'text-base-content/50'}`}>
-                                {timeToDisplay}
-                              </span>
+                              <div className="flex items-center gap-1 shrink-0 ml-1">
+                                <span className={`text-[9px] font-medium ${isActive ? 'text-white/80' : 'text-base-content/50'}`}>
+                                  {timeToDisplay}
+                                </span>
+                                {chat.unreadCount > 0 && !isActive && (
+                                  <span className="badge badge-primary badge-xs text-[9px] font-black h-4 px-1.5 shadow-sm text-white animate-pulse">
+                                    {chat.unreadCount}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <p className={`text-[11px] truncate mt-0.5 ${isActive ? 'text-white/85' : 'text-base-content/65'}`}>
+                            <p className={`text-[11px] truncate mt-0.5 ${
+                              isActive ? 'text-white/85' : (chat.unreadCount > 0 ? 'font-bold text-base-content' : 'text-base-content/65')
+                            }`}>
                               {typingUsers[chat.id] ? (
                                 <span className="italic font-bold text-amber-300">Typing...</span>
                               ) : (
-                                lastMsg ? (lastMsg.mediaUrl ? "📷 Shared media" : lastMsg.text) : "No messages yet"
+                                lastMsg ? (lastMsg.isDeleted ? "🚫 This message was deleted" : (lastMsg.mediaUrl ? "📷 Shared media" : lastMsg.text)) : "No messages yet"
                               )}
                             </p>
                           </div>
@@ -834,7 +1193,7 @@ export default function Messaging() {
                               <span className="text-[9px] opacity-60">{timeToDisplay}</span>
                             </div>
                             <p className="text-[10px] opacity-70 truncate mt-0.5">
-                              {lastMsg ? lastMsg.text : "Open chat"}
+                              {lastMsg ? (lastMsg.isDeleted ? "🚫 This message was deleted" : lastMsg.text) : "Open chat"}
                             </p>
                           </div>
                         </div>
@@ -980,66 +1339,258 @@ export default function Messaging() {
             </div>
 
             {/* Messages Stream */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-base-200/20">
+            <div 
+              onClick={() => {
+                if (activeMenuMsgId) setActiveMenuMsgId(null);
+              }}
+              className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 bg-base-200/20"
+            >
             {activeChat.messages && activeChat.messages.length > 0 ? (
-              activeChat.messages.map((msg) => {
-                const isMe = msg.senderId === currentUserId || msg.senderId === "me";
-                const isSystem = msg.senderId === "system";
+              (() => {
+                // Find index of the last read message sent by me (to show recipient's mini avatar like Messenger)
+                const lastReadMsgIndex = activeChat.messages.reduce((lastIdx, m, idx) => {
+                  if (m.senderId === currentUserId && m.isRead && !m.isDeleted) return idx;
+                  return lastIdx;
+                }, -1);
 
-                if (isSystem) {
+                return activeChat.messages.map((msg, idx) => {
+                  const isMe = msg.senderId === currentUserId || msg.senderId === "me";
+                  const isSystem = msg.senderId === "system";
+
+                  // Date divider calculation
+                  const currentDateDivider = getDateDividerLabel(msg.createdAt || msg.created_at || msg.time);
+                  const prevMsg = idx > 0 ? activeChat.messages[idx - 1] : null;
+                  const prevDateDivider = prevMsg ? getDateDividerLabel(prevMsg.createdAt || prevMsg.created_at || prevMsg.time) : null;
+                  const showDateDivider = currentDateDivider && currentDateDivider !== prevDateDivider;
+
+                  if (isSystem) {
+                    return (
+                      <React.Fragment key={msg.id}>
+                        {showDateDivider && (
+                          <div className="flex justify-center my-3">
+                            <span className="bg-base-200/90 text-base-content/60 text-[10px] font-bold px-3 py-0.5 rounded-full shadow-xs border border-base-300/70">
+                              {currentDateDivider}
+                            </span>
+                          </div>
+                        )}
+                        <div className="text-center my-3">
+                          <span className="bg-base-200 text-base-content/70 border border-base-300 text-[10px] py-1 px-3.5 rounded-full font-bold inline-block shadow-sm">
+                            {msg.text}
+                          </span>
+                        </div>
+                      </React.Fragment>
+                    );
+                  }
+
+                  const bubbleTime = formatBubbleTime(msg.createdAt || msg.created_at || msg.time);
+                  const isLastRead = idx === lastReadMsgIndex;
+
                   return (
-                    <div key={msg.id} className="text-center my-3">
-                      <span className="bg-base-200 text-base-content/70 border border-base-300 text-[10px] py-1 px-3.5 rounded-full font-bold inline-block shadow-sm">
-                        {msg.text}
-                      </span>
-                    </div>
-                  );
-                }
-
-                const bubbleTime = formatBubbleTime(msg.createdAt || msg.created_at || msg.time);
-
-                return (
-                  <div key={msg.id} className={`chat ${isMe ? 'chat-end' : 'chat-start'}`}>
-                    <div className="chat-image avatar">
-                      <div className="w-8 h-8 rounded-full border border-base-300 shadow-sm">
-                        <img 
-                          src={isMe ? (currentUser?.avatar || currentUser?.profilePictureUrl) : (msg.senderAvatar || msg.avatar || activeChat.user?.avatar)} 
-                          alt="Avatar" 
-                        />
-                      </div>
-                    </div>
-
-                    {activeChat.isGroup && !isMe && msg.senderName && (
-                      <div className="chat-header text-[10px] text-base-content/60 font-bold mb-0.5">
-                        {msg.senderName}
-                      </div>
-                    )}
-
-                    <div className={`chat-bubble text-xs shadow-sm leading-relaxed p-3 max-w-sm sm:max-w-md rounded-2xl ${
-                      isMe ? 'bg-primary text-white font-medium' : 'bg-base-100 text-base-content border border-base-200 font-medium'
-                    }`}>
-                      {msg.mediaUrl && (
-                        <div className="mb-2 rounded-xl overflow-hidden border border-white/20 max-h-56">
-                          <img src={msg.mediaUrl} alt="Shared attachment" className="w-full h-full object-cover" />
+                    <React.Fragment key={msg.id}>
+                      {showDateDivider && (
+                        <div className="flex justify-center my-3">
+                          <span className="bg-base-200/90 text-base-content/60 text-[10px] font-bold px-3 py-0.5 rounded-full shadow-xs border border-base-300/70">
+                            {currentDateDivider}
+                          </span>
                         </div>
                       )}
-                      <div>{msg.text}</div>
-                    </div>
 
-                    <div className="chat-footer text-[9px] opacity-60 mt-1 flex items-center gap-1">
-                      <span>{bubbleTime}</span>
-                      {isMe && <CheckCheck className="w-3 h-3 text-primary" />}
-                    </div>
-                  </div>
-                );
-              })
+                      <div className={`chat ${isMe ? 'chat-end' : 'chat-start'}`}>
+                        <div className="chat-image avatar">
+                          <div className="w-8 h-8 rounded-full border border-base-300 shadow-sm">
+                            <img 
+                              src={isMe ? (currentUser?.avatar || currentUser?.profilePictureUrl) : (msg.senderAvatar || msg.avatar || activeChat.user?.avatar)} 
+                              alt="Avatar" 
+                            />
+                          </div>
+                        </div>
+
+                        {activeChat.isGroup && !isMe && msg.senderName && (
+                          <div className="chat-header text-[10px] text-base-content/60 font-bold mb-0.5">
+                            {msg.senderName}
+                          </div>
+                        )}
+
+                        <div className={`chat-bubble text-xs shadow-sm leading-relaxed ${
+                          msg.mediaUrl && !msg.text ? 'p-1.5' : 'p-3'
+                        } max-w-sm sm:max-w-md md:max-w-lg rounded-2xl relative group ${
+                          isMe 
+                            ? (msg.isDeleted ? 'bg-base-200 text-base-content/60 border border-base-300 italic' : 'bg-primary text-white font-medium') 
+                            : (msg.isDeleted ? 'bg-base-200/60 text-base-content/50 border border-base-300 italic' : 'bg-base-100 text-base-content border border-base-200 font-medium')
+                        }`}>
+                          {/* 3-Dot Options Button on Hover / Tap */}
+                          {!msg.isDeleted && !msg.isPending && (
+                            <div className={`absolute top-1.5 ${isMe ? '-left-8' : '-right-8'} opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-30`}>
+                              <div className="relative">
+                                <button 
+                                  type="button" 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuMsgId(activeMenuMsgId === msg.id ? null : msg.id);
+                                  }}
+                                  className="btn btn-circle btn-xs bg-base-100/90 backdrop-blur-xs hover:bg-base-200 text-base-content shadow-md border border-base-300"
+                                  title="Message options"
+                                >
+                                  <MoreVertical className="w-3.5 h-3.5" />
+                                </button>
+
+                                {/* 3-Dot Dropdown Menu Popup */}
+                                {activeMenuMsgId === msg.id && (
+                                  <div 
+                                    onClick={(e) => e.stopPropagation()}
+                                    className={`absolute ${isMe ? 'right-0' : 'left-0'} top-7 z-40 w-36 bg-base-100 rounded-2xl shadow-xl border border-base-200 p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 text-base-content`}
+                                  >
+                                    {isMe && msg.text && !msg.isDeleted && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEdit(msg)}
+                                        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-base-content hover:bg-primary/10 hover:text-primary rounded-xl font-bold transition-colors"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5 text-primary" />
+                                        <span>Edit text</span>
+                                      </button>
+                                    )}
+
+                                    {msg.text && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCopyMessageText(msg)}
+                                        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-base-content hover:bg-base-200 rounded-xl font-bold transition-colors"
+                                      >
+                                        <Copy className="w-3.5 h-3.5 opacity-70" />
+                                        <span>{copiedMsgId === msg.id ? "Copied! ✓" : "Copy text"}</span>
+                                      </button>
+                                    )}
+
+                                    {isMe && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveMenuMsgId(null);
+                                          setDeleteConfirmMsgId(msg.id);
+                                        }}
+                                        className="flex items-center gap-2 w-full px-2.5 py-1.5 text-xs text-error hover:bg-error/10 rounded-xl font-bold transition-colors"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span>Delete for all</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Delete Confirmation Popover */}
+                          {deleteConfirmMsgId === msg.id && (
+                            <div className="p-2.5 bg-base-100 text-base-content rounded-xl border border-error/30 shadow-lg space-y-2 mb-2">
+                              <div className="flex items-center gap-1.5 text-error font-bold text-[11px]">
+                                <AlertCircle className="w-3.5 h-3.5" />
+                                <span>Delete this message for everyone?</span>
+                              </div>
+                              <div className="flex justify-end gap-1.5">
+                                <button 
+                                  type="button" 
+                                  onClick={() => setDeleteConfirmMsgId(null)}
+                                  className="btn btn-xs btn-ghost text-[10px]"
+                                >
+                                  Cancel
+                                </button>
+                                <button 
+                                  type="button"
+                                  onClick={() => handleDeleteMessage(msg.id)}
+                                  className="btn btn-xs btn-error text-white font-bold text-[10px]"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {msg.mediaUrl && !msg.isDeleted && (
+                            <div 
+                              onClick={() => setLightboxImageUrl(msg.mediaUrl)}
+                              className={`rounded-xl overflow-hidden border border-black/10 cursor-pointer group/img relative shadow-sm max-w-full inline-block ${
+                                msg.text ? 'mb-2' : ''
+                              }`}
+                              title="Click to view full image"
+                            >
+                              <img 
+                                src={msg.mediaUrl} 
+                                alt="Shared attachment" 
+                                className="max-h-64 sm:max-h-72 max-w-full w-auto object-cover rounded-xl transition-transform duration-200 group-hover/img:scale-[1.01]" 
+                                loading="lazy"
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/25 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100 rounded-xl">
+                                <span className="bg-black/75 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl backdrop-blur-xs flex items-center gap-1.5 shadow-lg">
+                                  <Search className="w-3.5 h-3.5" /> View full image
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {msg.isDeleted ? (
+                            <div className="flex items-center gap-1.5 italic opacity-75">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>This message was deleted</span>
+                            </div>
+                          ) : (
+                            msg.text ? <div className="break-words">{msg.text}</div> : null
+                          )}
+                        </div>
+
+                        {/* Footer: Time + Edited badge + Seen / Sent / Pending Status */}
+                        <div className="chat-footer text-[9px] opacity-70 mt-1 flex items-center justify-end gap-1.5">
+                          <span>{bubbleTime}</span>
+
+                          {msg.isEdited && !msg.isDeleted && (
+                            <span className="text-[8px] font-semibold italic opacity-85" title="Edited message">
+                              • Edited
+                            </span>
+                          )}
+
+                          {isMe && (
+                            <div className="flex items-center gap-1">
+                              {msg.isPending ? (
+                                <Clock className="w-3 h-3 text-base-content/40" title="Sending..." />
+                              ) : msg.isDeleted ? (
+                                <span className="italic text-[8px] opacity-60">Deleted</span>
+                              ) : msg.isRead ? (
+                                <div className="flex items-center gap-1 text-primary font-bold">
+                                  <CheckCheck className="w-3.5 h-3.5 text-primary" title="Seen" />
+                                  <span className="text-[8px]">Seen</span>
+
+                                  {/* Mini avatar of recipient on the last read message (Messenger style) */}
+                                  {isLastRead && !activeChat.isGroup && activeChat.user?.avatar && (
+                                    <img 
+                                      src={activeChat.user.avatar} 
+                                      alt="Seen" 
+                                      className="w-3.5 h-3.5 rounded-full object-cover border border-base-100 shadow-sm ml-0.5" 
+                                      title={`Seen by ${activeChat.user.name || "Recipient"}`}
+                                    />
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-0.5 text-base-content/50">
+                                  <Check className="w-3 h-3" title="Sent" />
+                                  <span className="text-[8px]">Sent</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </React.Fragment>
+                  );
+                });
+              })()
             ) : (
               <div className="text-center py-12 space-y-2">
                 <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
                   <MessageSquare className="w-6 h-6" />
                 </div>
                 <h4 className="text-xs font-bold text-base-content/80">No messages yet</h4>
-                <p className="text-[11px] text-base-content/50">Send a greeting to start chatting!</p>
+                <p className="text-[11px] text-base-content/50">Send a greeting or share a photo to start chatting!</p>
               </div>
             )}
 
@@ -1061,55 +1612,187 @@ export default function Messaging() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Media Input Drawer / Modal */}
-          {showMediaModal && (
-            <div className="p-3 bg-base-200/70 border-t border-base-300 flex items-center gap-2">
-              <input 
-                type="url" 
-                placeholder="Paste image / photo URL (e.g. https://...)..."
-                className="input input-sm input-bordered flex-1 rounded-xl text-xs bg-base-100"
-                value={mediaUrlInput}
-                onChange={(e) => setMediaUrlInput(e.target.value)}
-              />
+          {/* Hidden File Input for Device Photo / Gallery Selection */}
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageFileSelect}
+          />
+
+          {/* Selected Image Preview Bar Before Sending */}
+          {selectedImageBase64 && !editingMessage && (
+            <div className="p-3 bg-base-200/90 border-t border-base-300 flex items-center justify-between animate-in slide-in-from-bottom-2">
+              <div className="flex items-center gap-3">
+                <div 
+                  onClick={() => setLightboxImageUrl(selectedImageBase64)}
+                  className="relative group/thumb w-12 h-12 rounded-xl overflow-hidden border-2 border-primary shadow-md shrink-0 cursor-pointer"
+                  title="Click to preview"
+                >
+                  <img src={selectedImageBase64} alt="Attached preview" className="w-full h-full object-cover" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-base-content flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-primary" />
+                    <span>Photo attached</span>
+                  </p>
+                  <p className="text-[10px] text-base-content/60 truncate">
+                    Ready to send • Add message/caption below
+                  </p>
+                </div>
+              </div>
               <button 
                 type="button"
-                onClick={() => setShowMediaModal(false)}
-                className="btn btn-xs btn-ghost"
+                onClick={() => setSelectedImageBase64(null)}
+                className="btn btn-circle btn-xs btn-ghost text-base-content/70 hover:bg-base-300"
+                title="Remove photo"
               >
-                Close
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Editing Mode Banner */}
+          {editingMessage && (
+            <div className="px-4 py-2 bg-primary/10 border-t border-primary/20 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <Pencil className="w-3.5 h-3.5 text-primary shrink-0" />
+                <div className="min-w-0 flex items-center gap-1.5">
+                  <span className="font-bold text-primary">Editing message:</span>
+                  <span className="text-base-content/70 italic truncate inline-block max-w-[180px] sm:max-w-xs align-bottom">
+                    "{editingMessage.text}"
+                  </span>
+                </div>
+              </div>
+              <button 
+                type="button" 
+                onClick={handleCancelEdit}
+                className="btn btn-ghost btn-circle btn-xs text-base-content/60 hover:text-base-content"
+                title="Cancel editing (Esc)"
+              >
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
           {/* Message Input Form */}
-          <form onSubmit={handleSendMessage} className="p-3 sm:p-4 border-t border-base-300 bg-base-100 flex gap-2 items-center">
-            <button 
-              type="button" 
-              onClick={() => setShowMediaModal(!showMediaModal)}
-              className={`btn btn-sm btn-circle btn-ghost ${showMediaModal ? 'text-primary' : 'text-base-content/60'}`}
-              title="Share photo / image link"
-            >
-              <ImageIcon className="w-4 h-4" />
-            </button>
+          <form 
+            onSubmit={handleSendMessage} 
+            onPaste={handlePaste}
+            className="p-3 sm:p-4 border-t border-base-300 bg-base-100 flex gap-2 items-center"
+          >
+            {!editingMessage && (
+              <div className="flex items-center">
+                {/* Upload Photo Button (Device Gallery / Files / Screen Paste) */}
+                <button 
+                  type="button" 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isCompressingImage}
+                  className="btn btn-sm btn-circle btn-ghost text-base-content/70 hover:text-primary"
+                  title="Send photo from device (or paste with Ctrl+V)"
+                >
+                  {isCompressingImage ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  ) : (
+                    <ImageIcon className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            )}
 
             <input 
               type="text" 
-              placeholder={`Message ${activeChat.user?.name || "traveler"}...`} 
-              className="input input-sm sm:input-md input-bordered flex-1 rounded-2xl text-xs bg-base-100 focus:border-primary font-medium" 
+              placeholder={
+                editingMessage 
+                  ? "Edit message (Press Enter to save, Esc to cancel)..." 
+                  : (selectedImageBase64 ? "Add a caption/message (optional)..." : `Message ${activeChat.user?.name || "traveler"}...`)
+              } 
+              className={`input input-sm sm:input-md input-bordered flex-1 rounded-2xl text-xs bg-base-100 font-medium ${
+                editingMessage ? 'border-primary ring-1 ring-primary/30' : 'focus:border-primary'
+              }`} 
               value={messageText}
               onChange={handleInputChange}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && editingMessage) {
+                  handleCancelEdit();
+                }
+              }}
+              autoFocus={Boolean(editingMessage)}
             />
+
+            {editingMessage && (
+              <button 
+                type="button"
+                onClick={handleCancelEdit}
+                className="btn btn-sm sm:btn-md btn-ghost rounded-2xl text-xs font-bold text-base-content/70"
+              >
+                Cancel
+              </button>
+            )}
 
             <button 
               type="submit" 
-              disabled={!messageText.trim() && !mediaUrlInput.trim()}
+              disabled={!messageText.trim() && !selectedImageBase64}
               className="btn btn-sm sm:btn-md btn-primary text-white rounded-2xl text-xs gap-1.5 px-4 font-bold shadow-md shadow-primary/20"
             >
-              <span>Send</span> <Send className="w-3.5 h-3.5" />
+              {editingMessage ? (
+                <>
+                  <span>Save</span> <Check className="w-3.5 h-3.5" />
+                </>
+              ) : (
+                <>
+                  <span>Send</span> <Send className="w-3.5 h-3.5" />
+                </>
+              )}
             </button>
           </form>
 
         </div>
+        )}
+
+        {/* Fullscreen Lightbox Modal for Viewing Images */}
+        {lightboxImageUrl && (
+          <div 
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+            onClick={() => setLightboxImageUrl(null)}
+          >
+            <div 
+              className="relative max-w-4xl max-h-[90vh] flex flex-col items-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button 
+                type="button" 
+                onClick={() => setLightboxImageUrl(null)}
+                className="absolute -top-11 right-0 btn btn-circle btn-sm bg-white/20 text-white hover:bg-white/40 border-none shadow-lg"
+                title="Close (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <img 
+                src={lightboxImageUrl} 
+                alt="Fullscreen view" 
+                className="max-w-full max-h-[80vh] rounded-2xl object-contain shadow-2xl border border-white/10"
+              />
+              <div className="mt-3 flex gap-2">
+                <a 
+                  href={lightboxImageUrl} 
+                  download={`lagatour_image_${Date.now()}.jpg`}
+                  className="btn btn-xs btn-primary text-white rounded-xl font-bold gap-1.5 px-3.5 shadow-md"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Image</span>
+                </a>
+                <button 
+                  type="button"
+                  onClick={() => setLightboxImageUrl(null)}
+                  className="btn btn-xs btn-ghost text-white/80 rounded-xl"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
       </div>

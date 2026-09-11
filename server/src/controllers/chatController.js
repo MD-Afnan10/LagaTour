@@ -85,7 +85,7 @@ async function hydrateConversations(convRows, currentUserId) {
   // 2. Fetch all messages for these conversations (ordered by created_at)
   const allMsgsRaw = await query(
     `SELECT m.conversation_id, m.message_id, m.sender_id, m.message_text,
-            m.message_type, m.media_url, m.created_at,
+            m.message_type, m.media_url, m.is_deleted, m.is_edited, m.created_at,
             u.username AS sender_username, u.first_name, u.last_name
      FROM messages m
      LEFT JOIN users u ON m.sender_id = u.user_id
@@ -143,9 +143,11 @@ async function hydrateConversations(convRows, currentUserId) {
             [lastMsgRow.first_name, lastMsgRow.last_name].filter(Boolean).join(" ") ||
             lastMsgRow.sender_username ||
             "Traveler",
-          text: lastMsgRow.message_text,
-          mediaUrl: lastMsgRow.media_url,
+          text: lastMsgRow.is_deleted ? "This message was deleted" : lastMsgRow.message_text,
+          mediaUrl: lastMsgRow.is_deleted ? null : lastMsgRow.media_url,
           type: lastMsgRow.message_type,
+          isDeleted: Boolean(lastMsgRow.is_deleted),
+          isEdited: Boolean(lastMsgRow.is_edited),
           createdAt: lastMsgRow.created_at,
           time: new Date(lastMsgRow.created_at).toLocaleString([], {
             month: "short",
@@ -219,12 +221,25 @@ export async function getMessages(req, res) {
     const { conversationId } = req.params;
     const { userId, limit = 50, offset = 0 } = req.query;
 
-    // If userId is provided, update read tracker
+    // If userId is provided, update read tracker for this user and mark messages as read
     if (userId) {
       await query(
         `UPDATE conversation_members SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?`,
         [conversationId, userId]
       ).catch(() => {});
+
+      await query(
+        `UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ? AND (is_read = 0 OR is_read IS NULL)`,
+        [conversationId, userId]
+      ).catch(() => {});
+
+      try {
+        emitToConversation(conversationId, "messages_read", {
+          conversationId,
+          userId,
+          readAt: new Date().toISOString()
+        });
+      } catch (e) {}
     }
 
     const lim = Math.min(parseInt(limit, 10) || 50, 200);
@@ -254,10 +269,12 @@ export async function getMessages(req, res) {
       senderAvatar:
         m.profile_picture_url ||
         `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(m.username || m.sender_id)}`,
-      text: m.message_text,
-      mediaUrl: m.media_url,
+      text: m.is_deleted ? "This message was deleted" : m.message_text,
+      mediaUrl: m.is_deleted ? null : m.media_url,
       type: m.message_type || "text",
       isRead: Boolean(m.is_read),
+      isDeleted: Boolean(m.is_deleted),
+      isEdited: Boolean(m.is_edited),
       createdAt: m.created_at,
       time: new Date(m.created_at).toLocaleString([], {
         month: "short",
@@ -467,10 +484,10 @@ export async function sendMessage(req, res) {
       username: req.body.username
     };
 
-    if (!text || !text.trim()) {
-      return res.status(400).json({ success: false, message: "Message text cannot be empty." });
+    if ((!text || !text.trim()) && !mediaUrl) {
+      return res.status(400).json({ success: false, message: "Message cannot be empty." });
     }
-    if (text.trim().length > 5000) {
+    if (text && text.trim().length > 5000) {
       return res.status(400).json({ success: false, message: "Message cannot exceed 5000 characters." });
     }
     if (!userPayload || (!userPayload.id && !userPayload.user_id)) {
@@ -515,7 +532,7 @@ export async function sendMessage(req, res) {
     ).catch(() => {});
 
     const messageId = uid("msg");
-    const cleanText = text.trim();
+    const cleanText = text && text.trim() ? text.trim() : (mediaUrl ? "" : "");
 
     // 3. Insert message into messages table
     await query(
@@ -602,9 +619,10 @@ export async function searchChatUsers(req, res) {
     const searchTerm = `%${cleanQ}%`;
 
     let querySql = `
-      SELECT user_id, username, first_name, last_name, profile_picture_url, bio, league_points
+      SELECT user_id, username, first_name, last_name, profile_picture_url, bio, league_points, email
       FROM users
       WHERE (account_status IS NULL OR LOWER(account_status) NOT IN ('blocked', 'suspended', 'deleted', 'banned'))
+        AND user_id != 'admin_root'
     `;
     const queryParams = [];
 
@@ -619,12 +637,13 @@ export async function searchChatUsers(req, res) {
         LOWER(first_name) LIKE ? OR
         LOWER(last_name) LIKE ? OR
         LOWER(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) LIKE ? OR
+        LOWER(COALESCE(email, '')) LIKE ? OR
         LOWER(COALESCE(bio, '')) LIKE ?
       )`;
-      queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      queryParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
     }
 
-    querySql += ` ORDER BY league_points DESC LIMIT 50`;
+    querySql += ` ORDER BY league_points DESC, created_at DESC LIMIT 100`;
 
     const rows = await query(querySql, queryParams);
     const users = (rows || []).map((r) => formatUser(r)).filter(Boolean);
@@ -635,3 +654,211 @@ export async function searchChatUsers(req, res) {
     res.status(500).json({ success: false, message: error.message, users: [] });
   }
 }
+
+/**
+ * POST /api/chats/:conversationId/read
+ * Marks all incoming messages in a conversation as read by the specified user
+ */
+export async function markConversationAsRead(req, res) {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.body?.userId || req.query?.userId;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "userId is required." });
+    }
+
+    // 1. Update member's last_read_at timestamp
+    await query(
+      `UPDATE conversation_members SET last_read_at = NOW() WHERE conversation_id = ? AND user_id = ?`,
+      [conversationId, userId]
+    );
+
+    // 2. Mark all messages from other senders as read
+    await query(
+      `UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ? AND (is_read = 0 OR is_read IS NULL)`,
+      [conversationId, userId]
+    );
+
+    const readPayload = {
+      conversationId,
+      userId,
+      readAt: new Date().toISOString()
+    };
+
+    // 3. Emit real-time socket event to conversation room
+    emitToConversation(conversationId, "messages_read", readPayload);
+
+    // 4. Also notify all conversation members on their private rooms
+    try {
+      const memberRows = await query(
+        `SELECT user_id FROM conversation_members WHERE conversation_id = ?`,
+        [conversationId]
+      );
+      for (const m of memberRows) {
+        if (m.user_id && m.user_id !== userId) {
+          emitToConversation(`user_${m.user_id}`, "messages_read", readPayload);
+        }
+      }
+    } catch (socketErr) {
+      console.warn("Socket read receipt note:", socketErr.message);
+    }
+
+    res.json({ success: true, conversationId, userId, readAt: readPayload.readAt });
+  } catch (error) {
+    console.error("Error in markConversationAsRead:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * DELETE /api/chats/:conversationId/messages/:messageId
+ * Deletes a message (soft delete for everyone) if requester is the sender or admin
+ */
+export async function deleteMessage(req, res) {
+  try {
+    const { conversationId, messageId } = req.params;
+    const userId = req.body?.userId || req.query?.userId;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "userId is required to delete a message." });
+    }
+
+    // 1. Fetch the message
+    const [msgRow] = await query(
+      `SELECT * FROM messages WHERE message_id = ? AND conversation_id = ?`,
+      [messageId, conversationId]
+    );
+
+    if (!msgRow) {
+      return res.status(404).json({ success: false, message: "Message not found." });
+    }
+
+    // 2. Permission check: sender or conversation creator/admin
+    if (msgRow.sender_id !== userId) {
+      const [conv] = await query(
+        `SELECT created_by FROM conversations WHERE conversation_id = ?`,
+        [conversationId]
+      );
+      const [member] = await query(
+        `SELECT role FROM conversation_members WHERE conversation_id = ? AND user_id = ?`,
+        [conversationId, userId]
+      );
+
+      const isAdmin = conv?.created_by === userId || member?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, message: "You are not authorized to delete this message." });
+      }
+    }
+
+    // 3. Soft-delete the message in MySQL
+    await query(
+      `UPDATE messages SET is_deleted = 1, message_text = 'This message was deleted', media_url = NULL WHERE message_id = ?`,
+      [messageId]
+    );
+
+    const deletePayload = {
+      conversationId,
+      messageId,
+      deletedBy: userId,
+      isDeleted: true
+    };
+
+    // 4. Broadcast message_deleted via Socket.io
+    emitToConversation(conversationId, "message_deleted", deletePayload);
+
+    // Notify all members on their personal channels
+    try {
+      const memberRows = await query(
+        `SELECT user_id FROM conversation_members WHERE conversation_id = ?`,
+        [conversationId]
+      );
+      for (const m of memberRows) {
+        emitToConversation(`user_${m.user_id}`, "message_deleted", deletePayload);
+      }
+    } catch (socketErr) {
+      console.warn("Socket delete note:", socketErr.message);
+    }
+
+    res.json({ success: true, messageId, conversationId });
+  } catch (error) {
+    console.error("Error in deleteMessage:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/**
+ * PATCH /api/chats/:conversationId/messages/:messageId
+ * Edits an existing message if requester is the sender
+ */
+export async function editMessage(req, res) {
+  try {
+    const { conversationId, messageId } = req.params;
+    const { text, userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: "userId is required to edit a message." });
+    }
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, message: "Message text cannot be empty." });
+    }
+
+    // 1. Fetch message
+    const [msgRow] = await query(
+      `SELECT * FROM messages WHERE message_id = ? AND conversation_id = ?`,
+      [messageId, conversationId]
+    );
+
+    if (!msgRow) {
+      return res.status(404).json({ success: false, message: "Message not found." });
+    }
+
+    if (msgRow.is_deleted) {
+      return res.status(400).json({ success: false, message: "Cannot edit a deleted message." });
+    }
+
+    // 2. Permission check: Only original sender can edit
+    if (msgRow.sender_id !== userId) {
+      return res.status(403).json({ success: false, message: "You can only edit your own messages." });
+    }
+
+    const cleanText = text.trim();
+
+    // 3. Update message in MySQL
+    await query(
+      `UPDATE messages SET message_text = ?, is_edited = 1, updated_at = NOW() WHERE message_id = ?`,
+      [cleanText, messageId]
+    );
+
+    const editPayload = {
+      conversationId,
+      messageId,
+      text: cleanText,
+      isEdited: true,
+      updatedAt: new Date().toISOString()
+    };
+
+    // 4. Broadcast message_edited via Socket.io
+    emitToConversation(conversationId, "message_edited", editPayload);
+
+    // Notify all members on their personal channels
+    try {
+      const memberRows = await query(
+        `SELECT user_id FROM conversation_members WHERE conversation_id = ?`,
+        [conversationId]
+      );
+      for (const m of memberRows) {
+        emitToConversation(`user_${m.user_id}`, "message_edited", editPayload);
+      }
+    } catch (socketErr) {
+      console.warn("Socket edit note:", socketErr.message);
+    }
+
+    res.json({ success: true, messageId, conversationId, text: cleanText, isEdited: true });
+  } catch (error) {
+    console.error("Error in editMessage:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+
