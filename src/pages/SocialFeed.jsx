@@ -23,7 +23,8 @@ import {
   Copy,
   Check,
   Globe,
-  Loader2
+  Loader2,
+  ArrowRight
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -491,10 +492,29 @@ export default function SocialFeed() {
 
                   {/* Caption / Description */}
                   <div>
-                    <p className="text-sm leading-relaxed">
+                    <p className="text-sm leading-relaxed whitespace-pre-line">
                       <span className="font-bold mr-2 text-base-content">@{post.author?.username || "traveler"}</span>
                       {post.caption}
                     </p>
+                    
+                    {/* If this is an expedition story post, show an interactive badge with link to live tour plans */}
+                    {(post.expeditionData || post.caption?.includes("Expedition") || post.id?.includes("exp_")) && (
+                      <div className="mt-3 p-3.5 bg-gradient-to-r from-primary/10 via-base-200 to-warning/10 border border-primary/20 rounded-2xl flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-primary text-primary-content flex items-center justify-center font-bold text-xs">
+                            🗺️
+                          </div>
+                          <div>
+                            <span className="font-black text-xs text-base-content block">Live Multi-Stop Expedition</span>
+                            <span className="text-[10px] text-base-content/60">View real-time route, check-in history & itemized budget</span>
+                          </div>
+                        </div>
+
+                        <Link to="/plans" className="btn btn-xs btn-primary text-primary-content font-bold rounded-lg shrink-0 gap-1">
+                          View Tour <ArrowRight className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    )}
                   </div>
 
                   {/* Inline Comments List */}

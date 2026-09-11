@@ -756,7 +756,6 @@ async function seedInitialData(p) {
   }
 
   // Seed sample conversations & messages if empty
-
   const [convCount] = await p.query("SELECT COUNT(*) as count FROM conversations");
   if (convCount[0].count === 0) {
     console.log("🌱 Seeding initial conversations & messages into lagatour_db...");
@@ -764,38 +763,38 @@ async function seedInitialData(p) {
     await p.query(`
       INSERT INTO \`conversations\` (\`conversation_id\`, \`type\`, \`title\`, \`avatar_url\`, \`created_by\`, \`created_at\`)
       VALUES
-        ('chat_1', 'direct', NULL, NULL, 'user_2', NOW() - INTERVAL 1 DAY),
-        ('chat_2', 'direct', NULL, NULL, 'user_3', NOW() - INTERVAL 2 DAY),
-        ('chat_group_1', 'group', 'St. Martin\\'s Weekend Expedition 🌊', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200', 'user_2', NOW() - INTERVAL 3 DAY)
+        ('chat_1', 'direct', NULL, NULL, 'user_nabil', NOW() - INTERVAL 1 DAY),
+        ('chat_2', 'direct', NULL, NULL, 'user_nusrat', NOW() - INTERVAL 2 DAY),
+        ('chat_group_1', 'group', 'St. Martin\\'s Weekend Expedition 🌊', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200', 'user_nabil', NOW() - INTERVAL 3 DAY)
       ON DUPLICATE KEY UPDATE \`type\` = VALUES(\`type\`);
     `);
 
     await p.query(`
       INSERT INTO \`conversation_members\` (\`member_id\`, \`conversation_id\`, \`user_id\`, \`role\`, \`joined_at\`)
       VALUES
-        ('cm_1_1', 'chat_1', 'user_1', 'member', NOW() - INTERVAL 1 DAY),
-        ('cm_1_2', 'chat_1', 'user_2', 'admin', NOW() - INTERVAL 1 DAY),
-        ('cm_2_1', 'chat_2', 'user_1', 'member', NOW() - INTERVAL 2 DAY),
-        ('cm_2_2', 'chat_2', 'user_3', 'admin', NOW() - INTERVAL 2 DAY),
-        ('cm_g1_1', 'chat_group_1', 'user_2', 'admin', NOW() - INTERVAL 3 DAY),
-        ('cm_g1_2', 'chat_group_1', 'user_1', 'member', NOW() - INTERVAL 3 DAY),
-        ('cm_g1_3', 'chat_group_1', 'user_3', 'member', NOW() - INTERVAL 3 DAY)
+        ('cm_1_1', 'chat_1', 'user_siam', 'member', NOW() - INTERVAL 1 DAY),
+        ('cm_1_2', 'chat_1', 'user_nabil', 'admin', NOW() - INTERVAL 1 DAY),
+        ('cm_2_1', 'chat_2', 'user_siam', 'member', NOW() - INTERVAL 2 DAY),
+        ('cm_2_2', 'chat_2', 'user_nusrat', 'admin', NOW() - INTERVAL 2 DAY),
+        ('cm_g1_1', 'chat_group_1', 'user_nabil', 'admin', NOW() - INTERVAL 3 DAY),
+        ('cm_g1_2', 'chat_group_1', 'user_siam', 'member', NOW() - INTERVAL 3 DAY),
+        ('cm_g1_3', 'chat_group_1', 'user_nusrat', 'member', NOW() - INTERVAL 3 DAY)
       ON DUPLICATE KEY UPDATE \`role\` = VALUES(\`role\`);
     `);
 
     await p.query(`
       INSERT INTO \`messages\` (\`message_id\`, \`conversation_id\`, \`sender_id\`, \`message_text\`, \`message_type\`, \`created_at\`)
       VALUES
-        ('msg_1_1', 'chat_1', 'user_2', 'Hey Aria! Are you free for the St. Martin\\'s trip in November?', 'text', NOW() - INTERVAL 60 MINUTE),
-        ('msg_1_2', 'chat_1', 'user_1', 'Yes Nabil! I just checked my calendar and joined the group. Super excited!', 'text', NOW() - INTERVAL 45 MINUTE),
-        ('msg_1_3', 'chat_1', 'user_2', 'Great! Let\\'s update the checklist. I assigned barbecue prep to you.', 'text', NOW() - INTERVAL 30 MINUTE),
-        ('msg_1_4', 'chat_1', 'user_1', 'On it! Will look up some good options.', 'text', NOW() - INTERVAL 15 MINUTE),
-        ('msg_2_1', 'chat_2', 'user_3', 'Hi Aria, did you check the Sreemangal itinerary? Is Lawachara trek safe for kids?', 'text', NOW() - INTERVAL 2 HOUR),
-        ('msg_2_2', 'chat_2', 'user_1', 'Yes, it is very safe. The main trail is fully paved. Just make sure to use mosquito repellent!', 'text', NOW() - INTERVAL 90 MINUTE),
-        ('msg_g1_1', 'chat_group_1', 'user_2', '🎉 Welcome everyone to the St. Martin\\'s Expedition group!', 'system', NOW() - INTERVAL 3 DAY),
-        ('msg_g1_2', 'chat_group_1', 'user_2', 'Hey team! I booked the Keari Cruise ship tickets. We are set for Nov 15!', 'text', NOW() - INTERVAL 2 DAY),
-        ('msg_g1_3', 'chat_group_1', 'user_1', 'Awesome! I will handle the food arrangements and the BBQ coordination.', 'text', NOW() - INTERVAL 1 DAY),
-        ('msg_g1_4', 'chat_group_1', 'user_3', 'Should we rent cycles there or book a tour auto?', 'text', NOW() - INTERVAL 4 HOUR)
+        ('msg_1_1', 'chat_1', 'user_nabil', 'Hey Siam! Are you free for the St. Martin\\'s trip in November?', 'text', NOW() - INTERVAL 60 MINUTE),
+        ('msg_1_2', 'chat_1', 'user_siam', 'Yes Nabil! I just checked my calendar and joined the group. Super excited!', 'text', NOW() - INTERVAL 45 MINUTE),
+        ('msg_1_3', 'chat_1', 'user_nabil', 'Great! Let\\'s update the checklist. I assigned barbecue prep to you.', 'text', NOW() - INTERVAL 30 MINUTE),
+        ('msg_1_4', 'chat_1', 'user_siam', 'On it! Will look up some good options.', 'text', NOW() - INTERVAL 15 MINUTE),
+        ('msg_2_1', 'chat_2', 'user_nusrat', 'Hi Siam, did you check the Sreemangal itinerary? Is Lawachara trek safe for kids?', 'text', NOW() - INTERVAL 2 HOUR),
+        ('msg_2_2', 'chat_2', 'user_siam', 'Yes, it is very safe. The main trail is fully paved. Just make sure to use mosquito repellent!', 'text', NOW() - INTERVAL 90 MINUTE),
+        ('msg_g1_1', 'chat_group_1', 'user_nabil', '🎉 Welcome everyone to the St. Martin\\'s Expedition group!', 'system', NOW() - INTERVAL 3 DAY),
+        ('msg_g1_2', 'chat_group_1', 'user_nabil', 'Hey team! I booked the Keari Cruise ship tickets. We are set for Nov 15!', 'text', NOW() - INTERVAL 2 DAY),
+        ('msg_g1_3', 'chat_group_1', 'user_siam', 'Awesome! I will handle the food arrangements and the BBQ coordination.', 'text', NOW() - INTERVAL 1 DAY),
+        ('msg_g1_4', 'chat_group_1', 'user_nusrat', 'Should we rent cycles there or book a tour auto?', 'text', NOW() - INTERVAL 4 HOUR)
       ON DUPLICATE KEY UPDATE \`message_text\` = VALUES(\`message_text\`);
     `);
   }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useExpeditions } from "../context/ExpeditionContext";
 import { MOCK_NOTIFICATIONS } from "../data/mockData";
 import { 
   Bell, 
@@ -22,6 +23,7 @@ import {
 
 export default function Navbar() {
   const { currentUser, logout, globalNotifications = [], clearPushNotifications } = useAuth();
+  const { activeExpedition } = useExpeditions();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -99,7 +101,12 @@ export default function Navbar() {
                 <li><Link to="/create-post"><PlusCircle className="w-4 h-4 text-primary" /> Create Post</Link></li>
                 <li><Link to="/map"><MapPin className="w-4 h-4" /> Map Explorer</Link></li>
                 <li><Link to="/places"><Landmark className="w-4 h-4" /> Places</Link></li>
-                <li><Link to="/plans"><Map className="w-4 h-4" /> Tour Plans</Link></li>
+                <li>
+                  <Link to="/plans" className="flex items-center justify-between">
+                    <span className="flex items-center gap-2"><Map className="w-4 h-4" /> Tour Plans</span>
+                    {activeExpedition && <span className="badge badge-error badge-xs text-white animate-pulse">LIVE</span>}
+                  </Link>
+                </li>
                 <li><Link to="/rankings"><Trophy className="w-4 h-4 text-warning" /> Rankings</Link></li>
                 <li><Link to="/groups"><Users className="w-4 h-4" /> Group Planner</Link></li>
                 <li><Link to="/chats"><MessageSquare className="w-4 h-4" /> Messages</Link></li>
@@ -149,8 +156,13 @@ export default function Navbar() {
             <Link to="/places" className={`btn btn-sm capitalize ${isActive("/places")}`}>
               <Landmark className="w-4 h-4" /> Places
             </Link>
-            <Link to="/plans" className={`btn btn-sm capitalize ${isActive("/plans")}`}>
+            <Link to="/plans" className={`btn btn-sm capitalize relative ${isActive("/plans")}`}>
               <Map className="w-4 h-4" /> Tour Plans
+              {activeExpedition && (
+                <span className="badge badge-error badge-xs text-white font-black animate-pulse ml-1 py-0.5 px-1.5 text-[9px]">
+                  LIVE
+                </span>
+              )}
             </Link>
             <Link to="/rankings" className={`btn btn-sm capitalize ${isActive("/rankings")}`}>
               <Trophy className="w-4 h-4 text-warning" /> Rankings

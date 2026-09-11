@@ -40,7 +40,8 @@ import {
   ShieldCheck,
   ShieldAlert,
   Sparkles,
-  Share2
+  Share2,
+  ChevronRight
 } from "lucide-react";
 
 export default function UserProfile() {

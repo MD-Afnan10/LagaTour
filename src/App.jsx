@@ -2,6 +2,7 @@ import React from "react";
 import { createBrowserRouter, RouterProvider, Navigate, Outlet } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { PostProvider } from "./context/PostContext";
+import { ExpeditionProvider } from "./context/ExpeditionContext";
 import Navbar from "./components/Navbar";
 import AdminNavbar from "./components/AdminNavbar";
 import { AlertTriangle, Info, CheckCircle, XCircle } from "lucide-react";
@@ -114,7 +115,9 @@ function App() {
   return (
     <AuthProvider>
       <PostProvider>
-        <RouterProvider router={router} />
+        <ExpeditionProvider>
+          <RouterProvider router={router} />
+        </ExpeditionProvider>
       </PostProvider>
     </AuthProvider>
   );
