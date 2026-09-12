@@ -29,7 +29,8 @@ import {
   Flame,
   ArrowRight,
   Send,
-  Trophy
+  Trophy,
+  RotateCcw
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -40,6 +41,7 @@ export default function LiveExpeditionTracker({ expedition, onBack = null, onCre
     addSpontaneousDiscovery, 
     logExpense, 
     finishExpedition, 
+    restartExpedition,
     isOnline, 
     lastSyncTime 
   } = useExpeditions();
@@ -352,12 +354,23 @@ export default function LiveExpeditionTracker({ expedition, onBack = null, onCre
                   </button>
                 )}
 
+                <button 
+                  onClick={() => {
+                    if (window.confirm("Restart this expedition? All stops and check-ins will reset to start a fresh live journey.")) {
+                      restartExpedition(expedition.id);
+                    }
+                  }}
+                  className="btn btn-sm btn-primary text-primary-content font-black rounded-xl gap-1.5 shadow-lg shadow-primary/20 hover:scale-105 transition-all"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" /> Restart Expedition
+                </button>
+
                 {onCreateNew && (
                   <button 
                     onClick={onCreateNew}
-                    className="btn btn-sm btn-primary text-primary-content font-black rounded-xl gap-1.5 shadow-lg shadow-primary/20"
+                    className="btn btn-sm btn-ghost border border-base-300 rounded-xl gap-1.5 font-bold text-xs"
                   >
-                    <Plus className="w-4 h-4" /> Plan New Expedition
+                    <Plus className="w-4 h-4" /> Plan New
                   </button>
                 )}
               </>

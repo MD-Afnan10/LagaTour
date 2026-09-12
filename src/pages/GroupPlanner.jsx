@@ -1089,15 +1089,20 @@ export default function GroupPlanner() {
 
               <div className="form-control">
                 <label className="label py-0.5"><span className="text-xs font-bold label-text">Destination</span></label>
-                <select 
-                  className="w-full text-xs select select-sm select-bordered rounded-xl"
+                <input 
+                  type="text" 
+                  list="group-planner-destination-list"
+                  placeholder="e.g. Cox's Bazar Beach, Bandarban, Sylhet..." 
+                  className="w-full text-xs input input-sm input-bordered rounded-xl"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
-                >
+                  required
+                />
+                <datalist id="group-planner-destination-list">
                   {MOCK_DESTINATIONS.map(d => (
                     <option key={d.id} value={d.name}>{d.name}</option>
                   ))}
-                </select>
+                </datalist>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

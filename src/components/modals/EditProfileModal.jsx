@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   X, 
   Edit3, 
@@ -16,16 +16,14 @@ export default function EditProfileModal({
   currentUser, 
   onSave 
 }) {
-  if (!isOpen || !currentUser) return null;
-
-  const [firstName, setFirstName] = useState(currentUser.firstName || currentUser.name?.split(" ")[0] || "");
-  const [lastName, setLastName] = useState(currentUser.lastName || currentUser.name?.split(" ").slice(1).join(" ") || "");
-  const [bio, setBio] = useState(currentUser.bio || "");
-  const [country, setCountry] = useState(currentUser.country || "Bangladesh");
-  const [city, setCity] = useState(currentUser.city || "Dhaka");
-  const [phone, setPhone] = useState(currentUser.phone || "");
-  const [preferredTravelType, setPreferredTravelType] = useState(currentUser.preferredTravelType || "Solo");
-  const [avatar, setAvatar] = useState(currentUser.avatar || "");
+  const [firstName, setFirstName] = useState(currentUser?.firstName || currentUser?.name?.split(" ")[0] || "");
+  const [lastName, setLastName] = useState(currentUser?.lastName || currentUser?.name?.split(" ").slice(1).join(" ") || "");
+  const [bio, setBio] = useState(currentUser?.bio || "");
+  const [country, setCountry] = useState(currentUser?.country || "Bangladesh");
+  const [city, setCity] = useState(currentUser?.city || "Dhaka");
+  const [phone, setPhone] = useState(currentUser?.phone || "");
+  const [preferredTravelType, setPreferredTravelType] = useState(currentUser?.preferredTravelType || "Solo");
+  const [avatar, setAvatar] = useState(currentUser?.avatar || "");
   
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -33,13 +31,28 @@ export default function EditProfileModal({
 
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    if (currentUser) {
+      setFirstName(currentUser.firstName || currentUser.name?.split(" ")[0] || "");
+      setLastName(currentUser.lastName || currentUser.name?.split(" ").slice(1).join(" ") || "");
+      setBio(currentUser.bio || "");
+      setCountry(currentUser.country || "Bangladesh");
+      setCity(currentUser.city || "Dhaka");
+      setPhone(currentUser.phone || "");
+      setPreferredTravelType(currentUser.preferredTravelType || "Solo");
+      setAvatar(currentUser.avatar || "");
+    }
+  }, [currentUser]);
+
+  if (!isOpen || !currentUser) return null;
+
   const PRESET_AVATARS = [
-    { name: "Adventurer", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=adventurer_${currentUser.username || 'user'}` },
-    { name: "Nomad", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=nomad_${currentUser.username || 'user'}` },
-    { name: "Explorer", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=explorer_${currentUser.username || 'user'}` },
-    { name: "Hiker", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=hiker_${currentUser.username || 'user'}` },
-    { name: "Wanderer", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=wanderer_${currentUser.username || 'user'}` },
-    { name: "Pilot", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=pilot_${currentUser.username || 'user'}` }
+    { name: "Adventurer", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=adventurer_${currentUser?.username || 'user'}` },
+    { name: "Nomad", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=nomad_${currentUser?.username || 'user'}` },
+    { name: "Explorer", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=explorer_${currentUser?.username || 'user'}` },
+    { name: "Hiker", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=hiker_${currentUser?.username || 'user'}` },
+    { name: "Wanderer", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=wanderer_${currentUser?.username || 'user'}` },
+    { name: "Pilot", url: `https://api.dicebear.com/7.x/adventurer/svg?seed=pilot_${currentUser?.username || 'user'}` }
   ];
 
   const handleFileUpload = async (e) => {

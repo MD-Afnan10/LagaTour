@@ -20,7 +20,8 @@ import {
   Star, 
   Layers, 
   Navigation,
-  Compass
+  Compass,
+  RotateCcw
 } from "lucide-react";
 
 export default function ExpeditionDetailModal({
@@ -29,6 +30,7 @@ export default function ExpeditionDetailModal({
   expedition,
   onEdit = null,
   onStart = null,
+  onRestart = null,
   onTrack = null,
   onPublish = null
 }) {
@@ -353,6 +355,18 @@ export default function ExpeditionDetailModal({
                 className="btn btn-sm btn-primary text-primary-content font-black rounded-xl text-xs gap-1.5 shadow"
               >
                 <Play className="w-3.5 h-3.5 fill-current" /> Start Tour
+              </button>
+            )}
+
+            {isCompleted && onRestart && (
+              <button 
+                onClick={() => {
+                  onClose();
+                  onRestart(expedition.id);
+                }}
+                className="btn btn-sm btn-primary text-primary-content font-black rounded-xl text-xs gap-1.5 shadow"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Restart Tour
               </button>
             )}
 
