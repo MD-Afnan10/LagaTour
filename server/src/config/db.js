@@ -635,6 +635,7 @@ export async function initDatabase() {
       CREATE TABLE IF NOT EXISTS \`expedition_groups\` (
         \`group_id\` varchar(255) NOT NULL,
         \`organizer_id\` varchar(255) NOT NULL,
+        \`conversation_id\` varchar(255) DEFAULT NULL,
         \`title\` varchar(255) NOT NULL,
         \`destination\` varchar(255) NOT NULL,
         \`travel_date\` date DEFAULT NULL,
@@ -652,7 +653,90 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 24. Seed default users & places & chats if empty
+    try {
+      const [egCols] = await p.query("SHOW COLUMNS FROM expedition_groups");
+      const egColNames = egCols.map(c => c.Field);
+      if (!egColNames.includes("conversation_id")) {
+        await p.query("ALTER TABLE expedition_groups ADD COLUMN conversation_id varchar(255) NULL AFTER organizer_id");
+      }
+    } catch (egAlterErr) {}
+
+    // 24. Create Expedition Members table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`expedition_members\` (
+        \`id\` varchar(255) NOT NULL,
+        \`group_id\` varchar(255) NOT NULL,
+        \`user_id\` varchar(255) NOT NULL,
+        \`role\` enum('organizer','member','guide') DEFAULT 'member',
+        \`status\` enum('pending','accepted','rejected') DEFAULT 'pending',
+        \`joined_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`unique_group_member\` (\`group_id\`, \`user_id\`),
+        KEY \`fk_em_group\` (\`group_id\`),
+        KEY \`fk_em_user\` (\`user_id\`),
+        CONSTRAINT \`fk_em_group\` FOREIGN KEY (\`group_id\`) REFERENCES \`expedition_groups\` (\`group_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_em_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 25. Create Expedition Checklists table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`expedition_checklists\` (
+        \`task_id\` varchar(255) NOT NULL,
+        \`group_id\` varchar(255) NOT NULL,
+        \`task\` varchar(255) NOT NULL,
+        \`is_completed\` tinyint(1) DEFAULT 0,
+        \`assigned_to_user_id\` varchar(255) DEFAULT NULL,
+        \`assigned_to_name\` varchar(150) DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`task_id\`),
+        KEY \`fk_ec_group\` (\`group_id\`),
+        CONSTRAINT \`fk_ec_group\` FOREIGN KEY (\`group_id\`) REFERENCES \`expedition_groups\` (\`group_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 26. Create Expedition Expenses table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`expedition_expenses\` (
+        \`expense_id\` varchar(255) NOT NULL,
+        \`group_id\` varchar(255) NOT NULL,
+        \`title\` varchar(255) NOT NULL,
+        \`amount\` decimal(12,2) NOT NULL DEFAULT 0.00,
+        \`paid_by_user_id\` varchar(255) DEFAULT NULL,
+        \`paid_by_name\` varchar(150) DEFAULT NULL,
+        \`date\` varchar(50) DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`expense_id\`),
+        KEY \`fk_ee_group\` (\`group_id\`),
+        CONSTRAINT \`fk_ee_group\` FOREIGN KEY (\`group_id\`) REFERENCES \`expedition_groups\` (\`group_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 27. Create Expedition Itinerary Suggestions / Appeals table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`expedition_itinerary_suggestions\` (
+        \`id\` varchar(255) NOT NULL,
+        \`group_id\` varchar(255) NOT NULL,
+        \`user_id\` varchar(255) NOT NULL,
+        \`user_name\` varchar(150) DEFAULT NULL,
+        \`user_avatar\` text DEFAULT NULL,
+        \`day\` varchar(50) NOT NULL DEFAULT 'Day 1',
+        \`activity_plan\` text NOT NULL,
+        \`reason\` text DEFAULT NULL,
+        \`status\` enum('pending','accepted','rejected') NOT NULL DEFAULT 'pending',
+        \`rejection_reason\` text DEFAULT NULL,
+        \`reviewed_by\` varchar(255) DEFAULT NULL,
+        \`reviewed_at\` datetime DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`id\`),
+        KEY \`fk_eis_group\` (\`group_id\`),
+        KEY \`fk_eis_user\` (\`user_id\`),
+        CONSTRAINT \`fk_eis_group\` FOREIGN KEY (\`group_id\`) REFERENCES \`expedition_groups\` (\`group_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_eis_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 28. Seed default users & places & chats if empty
     await seedInitialData(p);
 
 
@@ -845,49 +929,137 @@ async function seedInitialData(p) {
     `);
   }
 
-  // Seed sample conversations & messages if empty
-  const [convCount] = await p.query("SELECT COUNT(*) as count FROM conversations");
-  if (convCount[0].count === 0) {
-    console.log("🌱 Seeding initial conversations & messages into lagatour_db...");
+    // Seed sample conversations & messages if empty
+    const [convCount] = await p.query("SELECT COUNT(*) as count FROM conversations");
+    if (convCount[0].count === 0) {
+      console.log("🌱 Seeding initial conversations & messages into lagatour_db...");
 
-    await p.query(`
-      INSERT INTO \`conversations\` (\`conversation_id\`, \`type\`, \`title\`, \`avatar_url\`, \`created_by\`, \`created_at\`)
-      VALUES
-        ('chat_1', 'direct', NULL, NULL, 'user_nabil', NOW() - INTERVAL 1 DAY),
-        ('chat_2', 'direct', NULL, NULL, 'user_nusrat', NOW() - INTERVAL 2 DAY),
-        ('chat_group_1', 'group', 'St. Martin\\'s Weekend Expedition 🌊', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200', 'user_nabil', NOW() - INTERVAL 3 DAY)
-      ON DUPLICATE KEY UPDATE \`type\` = VALUES(\`type\`);
-    `);
+      await p.query(`
+        INSERT INTO \`conversations\` (\`conversation_id\`, \`type\`, \`title\`, \`avatar_url\`, \`created_by\`, \`created_at\`)
+        VALUES
+          ('chat_1', 'direct', NULL, NULL, 'user_nabil', NOW() - INTERVAL 1 DAY),
+          ('chat_2', 'direct', NULL, NULL, 'user_nusrat', NOW() - INTERVAL 2 DAY),
+          ('chat_group_1', 'group', 'St. Martin\\'s Weekend Expedition 🌊', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200', 'user_nabil', NOW() - INTERVAL 3 DAY),
+          ('chat_group_2', 'group', 'Sajek Valley & Konglak Peak Cloud Walk ☁️', 'https://images.unsplash.com/photo-1627894483216-2138af692e32?w=200', 'user_tariq', NOW() - INTERVAL 2 DAY),
+          ('chat_group_3', 'group', 'Cox\\'s Bazar Marine Drive Rally 🏖️', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200', 'user_sadia', NOW() - INTERVAL 1 DAY)
+        ON DUPLICATE KEY UPDATE \`type\` = VALUES(\`type\`);
+      `);
 
-    await p.query(`
-      INSERT INTO \`conversation_members\` (\`member_id\`, \`conversation_id\`, \`user_id\`, \`role\`, \`joined_at\`)
-      VALUES
-        ('cm_1_1', 'chat_1', 'user_siam', 'member', NOW() - INTERVAL 1 DAY),
-        ('cm_1_2', 'chat_1', 'user_nabil', 'admin', NOW() - INTERVAL 1 DAY),
-        ('cm_2_1', 'chat_2', 'user_siam', 'member', NOW() - INTERVAL 2 DAY),
-        ('cm_2_2', 'chat_2', 'user_nusrat', 'admin', NOW() - INTERVAL 2 DAY),
-        ('cm_g1_1', 'chat_group_1', 'user_nabil', 'admin', NOW() - INTERVAL 3 DAY),
-        ('cm_g1_2', 'chat_group_1', 'user_siam', 'member', NOW() - INTERVAL 3 DAY),
-        ('cm_g1_3', 'chat_group_1', 'user_nusrat', 'member', NOW() - INTERVAL 3 DAY)
-      ON DUPLICATE KEY UPDATE \`role\` = VALUES(\`role\`);
-    `);
+      await p.query(`
+        INSERT INTO \`conversation_members\` (\`member_id\`, \`conversation_id\`, \`user_id\`, \`role\`, \`joined_at\`)
+        VALUES
+          ('cm_1_1', 'chat_1', 'user_siam', 'member', NOW() - INTERVAL 1 DAY),
+          ('cm_1_2', 'chat_1', 'user_nabil', 'admin', NOW() - INTERVAL 1 DAY),
+          ('cm_2_1', 'chat_2', 'user_siam', 'member', NOW() - INTERVAL 2 DAY),
+          ('cm_2_2', 'chat_2', 'user_nusrat', 'admin', NOW() - INTERVAL 2 DAY),
+          ('cm_g1_1', 'chat_group_1', 'user_nabil', 'admin', NOW() - INTERVAL 3 DAY),
+          ('cm_g1_2', 'chat_group_1', 'user_siam', 'member', NOW() - INTERVAL 3 DAY),
+          ('cm_g1_3', 'chat_group_1', 'user_nusrat', 'member', NOW() - INTERVAL 3 DAY),
+          ('cm_g2_1', 'chat_group_2', 'user_tariq', 'admin', NOW() - INTERVAL 2 DAY),
+          ('cm_g2_2', 'chat_group_2', 'user_sadia', 'member', NOW() - INTERVAL 2 DAY),
+          ('cm_g2_3', 'chat_group_2', 'user_rayan', 'member', NOW() - INTERVAL 2 DAY),
+          ('cm_g3_1', 'chat_group_3', 'user_sadia', 'admin', NOW() - INTERVAL 1 DAY),
+          ('cm_g3_2', 'chat_group_3', 'user_farhana', 'member', NOW() - INTERVAL 1 DAY)
+        ON DUPLICATE KEY UPDATE \`role\` = VALUES(\`role\`);
+      `);
 
-    await p.query(`
-      INSERT INTO \`messages\` (\`message_id\`, \`conversation_id\`, \`sender_id\`, \`message_text\`, \`message_type\`, \`created_at\`)
-      VALUES
-        ('msg_1_1', 'chat_1', 'user_nabil', 'Hey Siam! Are you free for the St. Martin\\'s trip in November?', 'text', NOW() - INTERVAL 60 MINUTE),
-        ('msg_1_2', 'chat_1', 'user_siam', 'Yes Nabil! I just checked my calendar and joined the group. Super excited!', 'text', NOW() - INTERVAL 45 MINUTE),
-        ('msg_1_3', 'chat_1', 'user_nabil', 'Great! Let\\'s update the checklist. I assigned barbecue prep to you.', 'text', NOW() - INTERVAL 30 MINUTE),
-        ('msg_1_4', 'chat_1', 'user_siam', 'On it! Will look up some good options.', 'text', NOW() - INTERVAL 15 MINUTE),
-        ('msg_2_1', 'chat_2', 'user_nusrat', 'Hi Siam, did you check the Sreemangal itinerary? Is Lawachara trek safe for kids?', 'text', NOW() - INTERVAL 2 HOUR),
-        ('msg_2_2', 'chat_2', 'user_siam', 'Yes, it is very safe. The main trail is fully paved. Just make sure to use mosquito repellent!', 'text', NOW() - INTERVAL 90 MINUTE),
-        ('msg_g1_1', 'chat_group_1', 'user_nabil', '🎉 Welcome everyone to the St. Martin\\'s Expedition group!', 'system', NOW() - INTERVAL 3 DAY),
-        ('msg_g1_2', 'chat_group_1', 'user_nabil', 'Hey team! I booked the Keari Cruise ship tickets. We are set for Nov 15!', 'text', NOW() - INTERVAL 2 DAY),
-        ('msg_g1_3', 'chat_group_1', 'user_siam', 'Awesome! I will handle the food arrangements and the BBQ coordination.', 'text', NOW() - INTERVAL 1 DAY),
-        ('msg_g1_4', 'chat_group_1', 'user_nusrat', 'Should we rent cycles there or book a tour auto?', 'text', NOW() - INTERVAL 4 HOUR)
-      ON DUPLICATE KEY UPDATE \`message_text\` = VALUES(\`message_text\`);
-    `);
-  }
+      await p.query(`
+        INSERT INTO \`messages\` (\`message_id\`, \`conversation_id\`, \`sender_id\`, \`message_text\`, \`message_type\`, \`created_at\`)
+        VALUES
+          ('msg_1_1', 'chat_1', 'user_nabil', 'Hey Siam! Are you free for the St. Martin\\'s trip in November?', 'text', NOW() - INTERVAL 60 MINUTE),
+          ('msg_1_2', 'chat_1', 'user_siam', 'Yes Nabil! I just checked my calendar and joined the group. Super excited!', 'text', NOW() - INTERVAL 45 MINUTE),
+          ('msg_1_3', 'chat_1', 'user_nabil', 'Great! Let\\'s update the checklist. I assigned barbecue prep to you.', 'text', NOW() - INTERVAL 30 MINUTE),
+          ('msg_1_4', 'chat_1', 'user_siam', 'On it! Will look up some good options.', 'text', NOW() - INTERVAL 15 MINUTE),
+          ('msg_2_1', 'chat_2', 'user_nusrat', 'Hi Siam, did you check the Sreemangal itinerary? Is Lawachara trek safe for kids?', 'text', NOW() - INTERVAL 2 HOUR),
+          ('msg_2_2', 'chat_2', 'user_siam', 'Yes, it is very safe. The main trail is fully paved. Just make sure to use mosquito repellent!', 'text', NOW() - INTERVAL 90 MINUTE),
+          ('msg_g1_1', 'chat_group_1', 'user_nabil', '🎉 Welcome everyone to the St. Martin\\'s Expedition group!', 'system', NOW() - INTERVAL 3 DAY),
+          ('msg_g1_2', 'chat_group_1', 'user_nabil', 'Hey team! I booked the Keari Cruise ship tickets. We are set for Nov 15!', 'text', NOW() - INTERVAL 2 DAY),
+          ('msg_g1_3', 'chat_group_1', 'user_siam', 'Awesome! I will handle the food arrangements and the BBQ coordination.', 'text', NOW() - INTERVAL 1 DAY),
+          ('msg_g1_4', 'chat_group_1', 'user_nusrat', 'Should we rent cycles there or book a tour auto?', 'text', NOW() - INTERVAL 4 HOUR),
+          ('msg_g2_1', 'chat_group_2', 'user_tariq', 'Welcome to the Sajek Valley trek! Make sure everyone reaches Dighinala by 9:30 AM for the military convoy.', 'text', NOW() - INTERVAL 1 DAY),
+          ('msg_g2_2', 'chat_group_2', 'user_sadia', 'Got it! I am carrying power banks and camera gear.', 'text', NOW() - INTERVAL 6 HOUR),
+          ('msg_g3_1', 'chat_group_3', 'user_sadia', 'Hello team! Cox\\'s Bazar Marine Drive itinerary is uploaded. Check the checklist!', 'text', NOW() - INTERVAL 12 HOUR)
+        ON DUPLICATE KEY UPDATE \`message_text\` = VALUES(\`message_text\`);
+      `);
+    }
+
+    // Seed sample expedition groups if empty
+    const [expGroupCount] = await p.query("SELECT COUNT(*) as count FROM expedition_groups");
+    if (expGroupCount[0].count === 0) {
+      console.log("🌱 Seeding initial expedition groups into lagatour_db...");
+
+      const itineraryStMartin = JSON.stringify([
+        { day: "Day 1", plan: "Depart Dhaka by night AC bus to Teknaf. Board Keari Sindbad ship at 9:30 AM to St. Martin. Check in at Coral View Resort and sunset at West Beach." },
+        { day: "Day 2", plan: "Morning speed boat or cycle ride to Chera Dwip coral reef. Snorkeling and fresh seafood lunch. Evening BBQ party with campfire." },
+        { day: "Day 3", plan: "Sunrise photography at East Beach. Souvenir shopping and return ship to Teknaf at 3 PM. Overnight bus back to Dhaka." }
+      ]);
+
+      const itinerarySajek = JSON.stringify([
+        { day: "Day 1", plan: "Arrival at Khagrachhari. Morning Army convoy from Dighinala to Sajek Valley. Check in at Meghpunji Resort. Sunset from Helipad." },
+        { day: "Day 2", plan: "4:30 AM trek to Konglak Peak for sunrise cloud ocean walk. Visit Lusai Village, Ruilui Para, and bamboo chicken dinner." },
+        { day: "Day 3", plan: "Morning convoy back to Khagrachhari. Visit Risang Waterfall and Alutila Mysterious Cave. Return bus to Dhaka." }
+      ]);
+
+      const itineraryCox = JSON.stringify([
+        { day: "Day 1", plan: "Depart Dhaka by overnight bus. Check in at Mermaid Eco Resort. Sunset at Inani Beach and fresh crab fry." },
+        { day: "Day 2", plan: "Marine Drive road trip to Teknaf by open jeep. Photography at Himchari waterfall and parasailing at Kolatoli." },
+        { day: "Day 3", plan: "Morning beach volleyball, Burmese market shopping, and evening return journey to Dhaka." }
+      ]);
+
+      await p.query(`
+        INSERT INTO \`expedition_groups\` (\`group_id\`, \`organizer_id\`, \`conversation_id\`, \`title\`, \`destination\`, \`travel_date\`, \`estimated_budget\`, \`max_members\`, \`transportation\`, \`accommodation_plan\`, \`itinerary\`, \`status\`)
+        VALUES
+          ('group_stmartin', 'user_nabil', 'chat_group_1', 'St. Martin\\'s Weekend Expedition 🌊', 'Saint Martin\\'s Island', '2026-11-15', 8500.00, 10, 'AC Bus & Keari Ship', 'Coral View Resort & Beach Camping', ?, 'open'),
+          ('group_sajek', 'user_tariq', 'chat_group_2', 'Sajek Valley & Konglak Peak Cloud Walk ☁️', 'Sajek Valley', '2026-12-05', 6500.00, 8, '4x4 Chander Gari Jeep', 'Meghpunji Resort Ruilui Para', ?, 'open'),
+          ('group_coxsbazar', 'user_sadia', 'chat_group_3', 'Cox\\'s Bazar Marine Drive Rally 🏖️', 'Cox\\'s Bazar Beach', '2026-12-10', 8000.00, 8, 'AC Luxury Bus', 'Mermaid Eco Resort & Spa', ?, 'open')
+        ON DUPLICATE KEY UPDATE \`title\` = VALUES(\`title\`);
+      `, [itineraryStMartin, itinerarySajek, itineraryCox]);
+
+      // Seed expedition members
+      await p.query(`
+        INSERT INTO \`expedition_members\` (\`id\`, \`group_id\`, \`user_id\`, \`role\`, \`status\`, \`joined_at\`)
+        VALUES
+          ('em_1', 'group_stmartin', 'user_nabil', 'organizer', 'accepted', NOW() - INTERVAL 3 DAY),
+          ('em_2', 'group_stmartin', 'user_siam', 'member', 'accepted', NOW() - INTERVAL 3 DAY),
+          ('em_3', 'group_stmartin', 'user_nusrat', 'member', 'accepted', NOW() - INTERVAL 2 DAY),
+          ('em_4', 'group_stmartin', 'user_tanvir', 'member', 'pending', NOW() - INTERVAL 1 DAY),
+          ('em_5', 'group_sajek', 'user_tariq', 'organizer', 'accepted', NOW() - INTERVAL 2 DAY),
+          ('em_6', 'group_sajek', 'user_sadia', 'member', 'accepted', NOW() - INTERVAL 2 DAY),
+          ('em_7', 'group_sajek', 'user_rayan', 'member', 'accepted', NOW() - INTERVAL 1 DAY),
+          ('em_8', 'group_coxsbazar', 'user_sadia', 'organizer', 'accepted', NOW() - INTERVAL 1 DAY),
+          ('em_9', 'group_coxsbazar', 'user_farhana', 'member', 'accepted', NOW() - INTERVAL 1 DAY)
+        ON DUPLICATE KEY UPDATE \`status\` = VALUES(\`status\`);
+      `);
+
+      // Seed expedition checklists
+      await p.query(`
+        INSERT INTO \`expedition_checklists\` (\`task_id\`, \`group_id\`, \`task\`,\`is_completed\`, \`assigned_to_user_id\`, \`assigned_to_name\`)
+        VALUES
+          ('chk_1', 'group_stmartin', 'Book Keari Cruise ship group tickets', 1, 'user_nabil', 'Nabil Ahmed'),
+          ('chk_2', 'group_stmartin', 'Confirm Coral View Resort rooms with sea view', 1, 'user_nabil', 'Nabil Ahmed'),
+          ('chk_3', 'group_stmartin', 'Arrange night BBQ setup & fresh coral fish', 1, 'user_siam', 'Siam Chowdhury'),
+          ('chk_4', 'group_stmartin', 'Rent bicycles for Chera Dwip morning coral ride', 0, 'user_nusrat', 'Nusrat Jahan'),
+          ('chk_5', 'group_stmartin', 'Carry first-aid kit and anti-seasickness medicine', 0, 'user_siam', 'Siam Chowdhury'),
+          ('chk_6', 'group_sajek', 'Coordinate 10 AM Dighinala Army Convoy entry', 1, 'user_tariq', 'Tariq Islam'),
+          ('chk_7', 'group_sajek', 'Confirm Meghpunji cottage booking in Ruilui Para', 1, 'user_sadia', 'Sadia Rahman'),
+          ('chk_8', 'group_sajek', 'Hire 4x4 Chander Gari driver for 3 days', 0, 'user_tariq', 'Tariq Islam'),
+          ('chk_9', 'group_coxsbazar', 'Book AC Bus group seats', 1, 'user_sadia', 'Sadia Rahman'),
+          ('chk_10', 'group_coxsbazar', 'Reserve Mermaid Eco Resort beach cottages', 1, 'user_sadia', 'Sadia Rahman'),
+          ('chk_11', 'group_coxsbazar', 'Arrange open jeep rental for Marine Drive rally', 0, 'user_farhana', 'Farhana Yasmin')
+        ON DUPLICATE KEY UPDATE \`task\` = VALUES(\`task\`);
+      `);
+
+      // Seed expedition expenses
+      await p.query(`
+        INSERT INTO \`expedition_expenses\` (\`expense_id\`, \`group_id\`, \`title\`, \`amount\`, \`paid_by_user_id\`, \`paid_by_name\`, \`date\`)
+        VALUES
+          ('exp_1', 'group_stmartin', 'Cruise Ship Tickets (Roundtrip)', 7200.00, 'user_nabil', 'Nabil Ahmed', '2026-11-01'),
+          ('exp_2', 'group_stmartin', 'Resort Advance Booking Deposit', 9500.00, 'user_siam', 'Siam Chowdhury', '2026-11-02'),
+          ('exp_3', 'group_sajek', '4x4 Chander Gari 3-Day Jeep Rental', 10500.00, 'user_tariq', 'Tariq Islam', '2026-11-10'),
+          ('exp_4', 'group_coxsbazar', 'Mermaid Resort Deposit', 12000.00, 'user_sadia', 'Sadia Rahman', '2026-11-12')
+        ON DUPLICATE KEY UPDATE \`title\` = VALUES(\`title\`);
+      `);
+    }
 
 }
 
