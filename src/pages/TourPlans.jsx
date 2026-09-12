@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useExpeditions } from "../context/ExpeditionContext";
 import ExpeditionCard from "../components/expedition/ExpeditionCard";
@@ -9,41 +8,24 @@ import ExpeditionSummaryModal from "../components/expedition/ExpeditionSummaryMo
 import ExpeditionDetailModal from "../components/expedition/ExpeditionDetailModal";
 import { 
   Search, 
-  Filter, 
-  Map, 
   Plus, 
   Star, 
-  DollarSign, 
-  Clock, 
   Calendar, 
-  Car, 
-  Home as HomeIcon, 
-  CheckCircle, 
-  TrendingUp, 
-  X, 
   Compass, 
-  Smile, 
-  ArrowUp, 
-  ArrowDown, 
-  Send,
   Radio,
   Trophy,
   Sparkles,
   Layers,
-  ArrowRight,
-  Play,
-  Edit3,
-  CheckCircle2,
-  ListFilter
+  ArrowRight
 } from "lucide-react";
-import confetti from "canvas-confetti";
 
 export default function TourPlans() {
-  const { currentUser, addPoints } = useAuth();
+  const { currentUser } = useAuth();
   const { 
     expeditions, 
     activeExpedition, 
     startExpedition, 
+    restartExpedition,
     deleteExpedition, 
     publishToSocialFeed 
   } = useExpeditions();
@@ -115,6 +97,12 @@ export default function TourPlans() {
     setActiveTab("live_tracker");
   };
 
+  const handleRestartExpedition = (expId) => {
+    restartExpedition(expId);
+    setFocusedExpeditionId(expId);
+    setActiveTab("live_tracker");
+  };
+
   const handleTrackExpedition = (exp) => {
     setFocusedExpeditionId(exp.id);
     setActiveTab("live_tracker");
@@ -174,60 +162,6 @@ export default function TourPlans() {
           </button>
         </div>
       </div>
-
-      {/* Ongoing Live Alert / Promotional Spot */}
-      {activeExpedition ? (
-        <div className="p-4 rounded-3xl bg-gradient-to-r from-error/15 via-warning/15 to-primary/15 border border-error/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-error text-white flex items-center justify-center font-black animate-pulse shrink-0">
-              <Radio className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-error badge-xs text-white font-bold animate-ping">●</span>
-                <span className="text-xs font-black text-error uppercase tracking-wider">Live Tour in Progress</span>
-              </div>
-              <h4 className="font-bold text-sm text-base-content m-0">
-                {activeExpedition.title}
-              </h4>
-            </div>
-          </div>
-
-          <button 
-            onClick={() => handleTrackExpedition(activeExpedition)}
-            className="btn btn-sm btn-error text-white font-black rounded-xl gap-1.5 shadow"
-          >
-            <Radio className="w-3.5 h-3.5" /> Jump to Live Cockpit
-          </button>
-        </div>
-      ) : (
-        <div className="p-4 md:p-5 rounded-3xl bg-gradient-to-r from-primary/10 via-amber-500/10 to-secondary/10 border border-primary/20 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-primary to-amber-500 text-white flex items-center justify-center font-black shrink-0 shadow-md">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="badge badge-primary badge-xs font-bold uppercase tracking-wider">✨ Ready For Adventure</span>
-                <span className="text-xs font-semibold text-base-content/60">No Live Tour Ongoing</span>
-              </div>
-              <h4 className="font-black text-sm md:text-base text-base-content m-0 mt-0.5">
-                Ready for your next journey? Create a new expedition now!
-              </h4>
-              <p className="text-xs text-base-content/60 m-0 hidden sm:block">
-                Plan multi-stop circuits with hotels & houseboats, invite companions, and track your GPS live.
-              </p>
-            </div>
-          </div>
-
-          <button 
-            onClick={handleOpenCreateModal}
-            className="btn btn-sm md:btn-md btn-primary text-primary-content font-black rounded-2xl gap-2 shadow-lg shadow-primary/25 border-none hover:scale-105 transition-all shrink-0"
-          >
-            <Plus className="w-4 h-4" /> Create a New Expedition Now
-          </button>
-        </div>
-      )}
 
       {/* Main Tab Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 pb-3">
@@ -440,6 +374,7 @@ export default function TourPlans() {
                   key={exp.id}
                   expedition={exp}
                   onStart={handleStartExpedition}
+                  onRestart={handleRestartExpedition}
                   onTrack={handleTrackExpedition}
                   onEdit={handleOpenEditModal}
                   onViewDetail={(e) => setDetailModalExpedition(e)}
@@ -631,6 +566,7 @@ export default function TourPlans() {
           expedition={detailModalExpedition}
           onEdit={(e) => handleOpenEditModal(e)}
           onStart={(eId) => handleStartExpedition(eId)}
+          onRestart={(eId) => handleRestartExpedition(eId)}
           onTrack={(e) => handleTrackExpedition(e)}
           onPublish={(eId) => publishToSocialFeed(eId)}
         />

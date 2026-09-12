@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { INITIAL_MOCK_EXPEDITIONS, BANGLADESH_PLACES_DATABASE, MOCK_COMPANIONS, MOCK_EXISTING_TOUR_GROUPS } from "../data/mockExpeditions";
 import { useAuth } from "./AuthContext";
 import { usePosts } from "./PostContext";
+import api from "../services/api";
+import { socketService } from "../services/socketService";
 import confetti from "canvas-confetti";
 
 const ExpeditionContext = createContext();
@@ -34,6 +36,162 @@ export function ExpeditionProvider({ children }) {
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [lastSyncTime, setLastSyncTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+  // 1. Initial Load: Fetch Tour Plans from Backend MySQL API
+  useEffect(() => {
+    async function loadTourPlansFromBackend() {
+      try {
+        const backendPlans = await api.fetchTourPlans({ currentUserId: currentUser?.id || currentUser?.user_id });
+        if (Array.isArray(backendPlans) && backendPlans.length > 0) {
+          setExpeditions(prev => {
+            const backendMap = new Map(backendPlans.map(p => [p.id, p]));
+            // Merge: preserve locally created plans that aren't on server yet, and override with backend data
+            const merged = [...backendPlans];
+            for (const local of prev) {
+              if (!backendMap.has(local.id)) {
+                merged.push(local);
+              }
+            }
+            return merged;
+          });
+          setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        }
+      } catch (err) {
+        console.warn("Tour plans loaded from local storage (Backend offline or starting):", err.message);
+      }
+    }
+
+    loadTourPlansFromBackend();
+  }, [currentUser]);
+
+  // 2. Real-time WebSocket Listeners
+  useEffect(() => {
+    const socket = socketService.connect(currentUser);
+    if (!socket) return;
+
+    const handleTourCreated = (newExp) => {
+      setExpeditions(prev => {
+        if (prev.some(e => e.id === newExp.id)) return prev;
+        return [newExp, ...prev];
+      });
+      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+
+    const handleTourUpdated = (updatedExp) => {
+      setExpeditions(prev => prev.map(e => e.id === updatedExp.id ? updatedExp : e));
+      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+
+    const handleTourDeleted = ({ id }) => {
+      setExpeditions(prev => prev.filter(e => e.id !== id));
+      if (activeExpeditionId === id) setActiveExpeditionId(null);
+    };
+
+    const handleTourStarted = ({ id, status }) => {
+      setExpeditions(prev => prev.map(e => e.id === id ? { ...e, status } : e));
+    };
+
+    const handleTourCompleted = ({ id, status }) => {
+      setExpeditions(prev => prev.map(e => e.id === id ? { ...e, status } : e));
+      if (activeExpeditionId === id) setActiveExpeditionId(null);
+    };
+
+    const handleStopCheckedIn = (data) => {
+      const { tourId, stopId, gps, note, photos, checkInTime } = data || {};
+      setExpeditions(prev => prev.map(exp => {
+        if (exp.id === tourId) {
+          const updatedStops = (exp.stops || []).map(s => {
+            if (s.id === stopId) {
+              return {
+                ...s,
+                status: "checked_in",
+                checkInTime: checkInTime || new Date().toISOString(),
+                checkInGps: gps || s.checkInGps,
+                checkInNote: note || s.checkInNote,
+                photos: photos || s.photos
+              };
+            }
+            return s;
+          });
+          return {
+            ...exp,
+            stops: updatedStops,
+            currentGps: gps ? { ...gps, lastUpdated: "Live Check-in" } : exp.currentGps
+          };
+        }
+        return exp;
+      }));
+      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+
+    const handleSpontaneousAdded = ({ tourId, stop }) => {
+      setExpeditions(prev => prev.map(exp => {
+        if (exp.id === tourId) {
+          const exists = (exp.stops || []).some(s => s.id === stop.id || (s.isSpontaneous && s.placeName === stop.placeName && s.order === stop.order));
+          if (exists) {
+            return {
+              ...exp,
+              stops: (exp.stops || []).map(s => (s.id === stop.id || (s.isSpontaneous && s.placeName === stop.placeName && s.order === stop.order)) ? { ...s, ...stop } : s),
+              currentGps: { lat: stop.lat, lng: stop.lng, lastUpdated: "Spontaneous Discovery" }
+            };
+          }
+          return {
+            ...exp,
+            stops: [...(exp.stops || []), stop],
+            currentGps: { lat: stop.lat, lng: stop.lng, lastUpdated: "Spontaneous Discovery" }
+          };
+        }
+        return exp;
+      }));
+      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+
+    const handleTourRestarted = ({ id, status, restartedAt }) => {
+      setExpeditions(prev => prev.map(exp => {
+        if (exp.id === id) {
+          const resetStops = (exp.stops || []).map(s => ({
+            ...s,
+            status: "pending",
+            checkInTime: null,
+            checkInGps: null,
+            checkInNote: null,
+            skipReason: null
+          }));
+          return {
+            ...exp,
+            status: status || "ongoing",
+            expenses: [],
+            spentBudget: 0,
+            aiScore: null,
+            stops: resetStops,
+            currentGps: resetStops[0]?.lat ? { lat: resetStops[0].lat, lng: resetStops[0].lng, lastUpdated: "Restarted" } : exp.currentGps
+          };
+        }
+        return exp;
+      }));
+      setLastSyncTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+
+    socket.on("tour:created", handleTourCreated);
+    socket.on("tour:updated", handleTourUpdated);
+    socket.on("tour:deleted", handleTourDeleted);
+    socket.on("tour:started", handleTourStarted);
+    socket.on("tour:completed", handleTourCompleted);
+    socket.on("tour:restarted", handleTourRestarted);
+    socket.on("tour:stop_checked_in", handleStopCheckedIn);
+    socket.on("tour:spontaneous_stop_added", handleSpontaneousAdded);
+
+    return () => {
+      socket.off("tour:created", handleTourCreated);
+      socket.off("tour:updated", handleTourUpdated);
+      socket.off("tour:deleted", handleTourDeleted);
+      socket.off("tour:started", handleTourStarted);
+      socket.off("tour:completed", handleTourCompleted);
+      socket.off("tour:restarted", handleTourRestarted);
+      socket.off("tour:stop_checked_in", handleStopCheckedIn);
+      socket.off("tour:spontaneous_stop_added", handleSpontaneousAdded);
+    };
+  }, [currentUser, activeExpeditionId]);
 
   // Track online / offline connectivity
   useEffect(() => {
@@ -112,7 +270,7 @@ export function ExpeditionProvider({ children }) {
   /**
    * Create a new Tour Plan / Expedition
    */
-  const createExpedition = (tourData) => {
+  const createExpedition = async (tourData) => {
     const authorUser = currentUser ? {
       id: currentUser.id || currentUser.user_id || "user_" + Date.now(),
       name: currentUser.name || "Adventurer",
@@ -143,6 +301,7 @@ export function ExpeditionProvider({ children }) {
       status: tourData.status || "planned", // 'planned' | 'ongoing' | 'completed'
       travelType: tourData.travelType || "Friends",
       season: tourData.season || "Monsoon",
+      transportation: tourData.transportation || "Bus",
       coverImage: tourData.coverImage || "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800",
       author: authorUser,
       companions: tourData.companions || [],
@@ -154,6 +313,7 @@ export function ExpeditionProvider({ children }) {
       comments: []
     };
 
+    // Optimistic state update
     setExpeditions(prev => [newExpedition, ...prev]);
 
     if (tourData.status === "ongoing") {
@@ -165,13 +325,23 @@ export function ExpeditionProvider({ children }) {
       confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
     }
 
+    // Persist to MySQL Backend API
+    try {
+      const res = await api.createTourPlan(newExpedition);
+      if (res && res.expedition) {
+        setExpeditions(prev => prev.map(e => e.id === newId ? res.expedition : e));
+      }
+    } catch (e) {
+      console.warn("Tour plan saved locally, backend sync will retry:", e.message);
+    }
+
     return newExpedition;
   };
 
   /**
    * Modify / Update an existing Tour Plan
    */
-  const updateExpedition = (tourId, updatedFields) => {
+  const updateExpedition = async (tourId, updatedFields) => {
     let updatedObj = null;
 
     setExpeditions(prev => prev.map(exp => {
@@ -194,25 +364,38 @@ export function ExpeditionProvider({ children }) {
       syncWithSocialFeed(updatedObj);
     }
 
+    // Sync to Backend
+    try {
+      await api.updateTourPlan(tourId, updatedFields);
+    } catch (e) {
+      console.warn("Tour plan update cached locally:", e.message);
+    }
+
     return updatedObj;
   };
 
   /**
    * Delete an expedition
    */
-  const deleteExpedition = (tourId) => {
+  const deleteExpedition = async (tourId) => {
     setExpeditions(prev => prev.filter(e => e.id !== tourId));
     if (activeExpeditionId === tourId) {
       setActiveExpeditionId(null);
+    }
+
+    try {
+      await api.deleteTourPlan(tourId);
+    } catch (e) {
+      console.warn("Tour plan deletion pending backend sync:", e.message);
     }
   };
 
   /**
    * Start Tour / Transition to Ongoing Live Mode
    */
-  const startExpedition = (tourId) => {
+  const startExpedition = async (tourId) => {
     setActiveExpeditionId(tourId);
-    const updated = updateExpedition(tourId, {
+    const updated = await updateExpedition(tourId, {
       status: "ongoing"
     });
 
@@ -221,13 +404,63 @@ export function ExpeditionProvider({ children }) {
       confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
     }
 
+    try {
+      await api.startTourPlan(tourId, currentUser?.id || currentUser?.user_id);
+    } catch (e) {}
+
+    return updated;
+  };
+
+  /**
+   * Restart an existing/previous Tour Plan (resets stops & starts new ongoing live cockpit)
+   */
+  const restartExpedition = async (tourId) => {
+    const targetExp = expeditions.find(e => e.id === tourId);
+    if (!targetExp) return null;
+
+    const resetStops = (targetExp.stops || []).map(s => ({
+      ...s,
+      status: "pending",
+      checkInTime: null,
+      checkInGps: null,
+      checkInNote: null,
+      skipReason: null
+    }));
+
+    const resetFields = {
+      status: "ongoing",
+      spentBudget: 0,
+      expenses: [],
+      stops: resetStops,
+      aiScore: null,
+      currentGps: resetStops[0]?.lat ? {
+        lat: resetStops[0].lat,
+        lng: resetStops[0].lng,
+        lastUpdated: "Expedition Restarted"
+      } : targetExp.currentGps
+    };
+
+    setActiveExpeditionId(tourId);
+    const updated = await updateExpedition(tourId, resetFields);
+
+    if (addPoints) {
+      addPoints(30);
+      confetti({ particleCount: 80, spread: 60, origin: { y: 0.6 } });
+    }
+
+    try {
+      await api.restartTourPlan(tourId, currentUser?.id || currentUser?.user_id);
+    } catch (e) {
+      console.warn("Tour plan restart pending backend sync:", e.message);
+    }
+
     return updated;
   };
 
   /**
    * Check in at a scheduled stop with live GPS coordinates
    */
-  const checkInStop = (tourId, stopId, checkInData = {}) => {
+  const checkInStop = async (tourId, stopId, checkInData = {}) => {
     const targetExp = expeditions.find(e => e.id === tourId);
     if (!targetExp) return;
 
@@ -265,7 +498,7 @@ export function ExpeditionProvider({ children }) {
       lastUpdated: "Just now"
     };
 
-    const updated = updateExpedition(tourId, {
+    const updated = await updateExpedition(tourId, {
       stops: updatedStops,
       expenses: updatedExpenses,
       currentGps: currentGps
@@ -276,13 +509,27 @@ export function ExpeditionProvider({ children }) {
       confetti({ particleCount: 60, spread: 50, origin: { y: 0.7 } });
     }
 
+    // Backend sync
+    try {
+      await api.checkInTourStop(tourId, {
+        stopId,
+        gps: checkInData.gps,
+        note: checkInData.note,
+        photos: checkInData.photos,
+        expense: checkInData.expense,
+        userId: currentUser?.id || currentUser?.user_id
+      });
+    } catch (e) {
+      console.warn("Check-in recorded offline, will sync when reconnected.");
+    }
+
     return updated;
   };
 
   /**
    * Skip a scheduled stop
    */
-  const skipStop = (tourId, stopId, reason = "Route altered due to time / weather") => {
+  const skipStop = async (tourId, stopId, reason = "Route altered due to time / weather") => {
     const targetExp = expeditions.find(e => e.id === tourId);
     if (!targetExp) return;
 
@@ -297,17 +544,23 @@ export function ExpeditionProvider({ children }) {
       return stop;
     });
 
-    return updateExpedition(tourId, { stops: updatedStops });
+    const updated = await updateExpedition(tourId, { stops: updatedStops });
+
+    try {
+      await api.skipTourStop(tourId, stopId, reason);
+    } catch (e) {}
+
+    return updated;
   };
 
   /**
    * Dynamically add unexpected on-the-road discoveries (Spontaneous Discovery)
    */
-  const addSpontaneousDiscovery = (tourId, discoveryData) => {
+  const addSpontaneousDiscovery = async (tourId, discoveryData) => {
     const targetExp = expeditions.find(e => e.id === tourId);
     if (!targetExp) return;
 
-    const newStopId = "stop_spont_" + Date.now();
+    const newStopId = discoveryData.id || discoveryData.stopId || ("stop_spont_" + Date.now());
     const newSpontaneousStop = {
       id: newStopId,
       order: (targetExp.stops || []).length + 1,
@@ -335,8 +588,6 @@ export function ExpeditionProvider({ children }) {
       photos: discoveryData.photos && discoveryData.photos.length > 0 ? discoveryData.photos : ["https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500"]
     };
 
-    const updatedStops = [...(targetExp.stops || []), newSpontaneousStop];
-
     let updatedExpenses = [...(targetExp.expenses || [])];
     if (discoveryData.expense && Number(discoveryData.expense.amount) > 0) {
       updatedExpenses.push({
@@ -349,28 +600,66 @@ export function ExpeditionProvider({ children }) {
       });
     }
 
-    const updated = updateExpedition(tourId, {
-      stops: updatedStops,
-      expenses: updatedExpenses,
-      currentGps: {
-        lat: newSpontaneousStop.lat,
-        lng: newSpontaneousStop.lng,
-        lastUpdated: "Spontaneous Discovery"
+    const calculatedSpent = updatedExpenses.reduce((acc, x) => acc + (Number(x.amount) || 0), 0);
+
+    // Optimistically update React state exactly once
+    let updatedExpedition = null;
+    setExpeditions(prev => prev.map(exp => {
+      if (exp.id === tourId) {
+        const stopExists = (exp.stops || []).some(s => s.id === newStopId || (s.isSpontaneous && s.placeName === newSpontaneousStop.placeName && s.order === newSpontaneousStop.order));
+        const finalStops = stopExists ? exp.stops : [...(exp.stops || []), newSpontaneousStop];
+
+        updatedExpedition = {
+          ...exp,
+          stops: finalStops,
+          expenses: updatedExpenses,
+          spentBudget: calculatedSpent,
+          currentGps: {
+            lat: newSpontaneousStop.lat,
+            lng: newSpontaneousStop.lng,
+            lastUpdated: "Spontaneous Discovery"
+          }
+        };
+        return updatedExpedition;
       }
-    });
+      return exp;
+    }));
 
     if (addPoints) {
       addPoints(60); // Spontaneous discovery bonus
       confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
     }
 
-    return updated;
+    // Backend sync via single dedicated endpoint
+    try {
+      const res = await api.addSpontaneousTourStop(tourId, {
+        ...discoveryData,
+        id: newStopId,
+        stopId: newStopId,
+        userId: currentUser?.id || currentUser?.user_id
+      });
+      if (res && res.stop) {
+        setExpeditions(prev => prev.map(exp => {
+          if (exp.id === tourId) {
+            return {
+              ...exp,
+              stops: (exp.stops || []).map(s => s.id === newStopId ? { ...s, ...res.stop } : s)
+            };
+          }
+          return exp;
+        }));
+      }
+    } catch (e) {
+      console.warn("Spontaneous stop cached offline.");
+    }
+
+    return updatedExpedition;
   };
 
   /**
    * Log an expense
    */
-  const logExpense = (tourId, expenseData) => {
+  const logExpense = async (tourId, expenseData) => {
     const targetExp = expeditions.find(e => e.id === tourId);
     if (!targetExp) return;
 
@@ -384,13 +673,19 @@ export function ExpeditionProvider({ children }) {
     };
 
     const updatedExpenses = [...(targetExp.expenses || []), newExpense];
-    return updateExpedition(tourId, { expenses: updatedExpenses });
+    const updated = await updateExpedition(tourId, { expenses: updatedExpenses });
+
+    try {
+      await api.addTourExpense(tourId, newExpense);
+    } catch (e) {}
+
+    return updated;
   };
 
   /**
    * Finish Expedition & Trigger AI Gamification Evaluation
    */
-  const finishExpedition = (tourId) => {
+  const finishExpedition = async (tourId) => {
     const targetExp = expeditions.find(e => e.id === tourId);
     if (!targetExp) return null;
 
@@ -437,7 +732,7 @@ export function ExpeditionProvider({ children }) {
       badges: earnedBadges
     };
 
-    const updated = updateExpedition(tourId, {
+    const updated = await updateExpedition(tourId, {
       status: "completed",
       spentBudget: totalSpent,
       aiScore: aiScoreData
@@ -452,6 +747,10 @@ export function ExpeditionProvider({ children }) {
       addPoints(totalGamificationPoints);
       confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 } });
     }
+
+    try {
+      await api.endTourPlan(tourId, currentUser?.id || currentUser?.user_id);
+    } catch (e) {}
 
     return { expedition: updated, aiScore: aiScoreData };
   };
@@ -504,7 +803,7 @@ export function ExpeditionProvider({ children }) {
       }
     }
 
-    const updated = updateExpedition(tourId, {
+    const updated = await updateExpedition(tourId, {
       isPublished: true,
       socialPostId: newPostId
     });
@@ -531,6 +830,7 @@ export function ExpeditionProvider({ children }) {
     updateExpedition,
     deleteExpedition,
     startExpedition,
+    restartExpedition,
     checkInStop,
     skipStop,
     addSpontaneousDiscovery,
@@ -545,3 +845,5 @@ export function ExpeditionProvider({ children }) {
     </ExpeditionContext.Provider>
   );
 }
+
+export default ExpeditionContext;

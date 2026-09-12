@@ -24,8 +24,11 @@ import {
   Check,
   Globe,
   Loader2,
-  ArrowRight
+  ArrowRight,
+  UserPlus,
+  UserCheck
 } from "lucide-react";
+import api from "../services/api";
 import confetti from "canvas-confetti";
 
 export default function SocialFeed() {
@@ -59,6 +62,35 @@ export default function SocialFeed() {
   const [sharingPost, setSharingPost] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [shareToastMsg, setShareToastMsg] = useState("");
+
+  // Followed Authors local state for fast UI feedback
+  const [followedAuthors, setFollowedAuthors] = useState({});
+
+  const handleFollowAuthor = async (author) => {
+    if (!currentUser) {
+      navigate("/auth");
+      return;
+    }
+    const currentUserId = currentUser.id || currentUser.user_id;
+    const authorId = author?.id || author?.user_id || author?.username;
+    if (!authorId) return;
+
+    const isCurrentlyFollowing = followedAuthors[authorId] !== undefined ? followedAuthors[authorId] : Boolean(author.isFollowing);
+    const nextState = !isCurrentlyFollowing;
+
+    setFollowedAuthors(prev => ({ ...prev, [authorId]: nextState }));
+    if (nextState && addPoints) {
+      addPoints(15);
+    }
+    setShareToastMsg(nextState ? `🌟 Following @${author.username || author.name || "traveler"}! (+15 pts)` : `Unfollowed @${author.username || author.name || "traveler"}`);
+    setTimeout(() => setShareToastMsg(""), 2200);
+
+    try {
+      await api.toggleFollowUser(authorId, currentUserId);
+    } catch (e) {
+      console.warn("Follow toggle failed:", e.message);
+    }
+  };
 
   const handleLike = (postId) => {
     toggleLikePost(postId, currentUser);
@@ -268,7 +300,7 @@ export default function SocialFeed() {
                       <img 
                         src={post.author?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${post.author?.username}`} 
                         alt={post.author?.name} 
-                        className="w-10 h-10 rounded-full object-cover border border-base-300 hover:opacity-80 transition-opacity" 
+                        className="w-10 h-10 rounded-full object-cover border border-base-300 hover:opacity-80 transition-opacity bg-base-200" 
                         onError={(e) => {
                           e.currentTarget.onerror = null;
                           e.currentTarget.src = `https://api.dicebear.com/7.x/adventurer/svg?seed=${post.author?.username || 'traveler'}`;
@@ -276,18 +308,61 @@ export default function SocialFeed() {
                       />
                     </Link>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Link to={`/profile/${post.author?.id || post.author?.username}`} className="font-bold text-sm hover:underline">
                           {post.author?.name}
                         </Link>
                         <span className="badge badge-sm badge-outline text-[10px] opacity-75">{post.author?.league || "Explorer"}</span>
+
+                        {/* Quick Follow Button if not viewer's own post */}
+                        {(() => {
+                          const authorId = post.author?.id || post.author?.user_id;
+                          const authorUsername = post.author?.username;
+                          const currentId = currentUser?.id || currentUser?.user_id;
+                          const currentUsername = currentUser?.username;
+                          const isSelfPost = currentUser && (
+                            (authorId && authorId === currentId) ||
+                            (authorUsername && currentUsername && authorUsername.toLowerCase() === currentUsername.toLowerCase())
+                          );
+
+                          if (isSelfPost || !post.author) return null;
+
+                          const authorKey = authorId || authorUsername;
+                          const isFollowingAuthor = followedAuthors[authorKey] !== undefined
+                            ? followedAuthors[authorKey]
+                            : Boolean(post.author?.isFollowing);
+
+                          return (
+                            <button
+                              onClick={() => handleFollowAuthor(post.author)}
+                              className={`btn btn-xs rounded-full gap-1 font-bold text-[10px] h-6 min-h-0 px-2.5 transition-all ${
+                                isFollowingAuthor 
+                                  ? "btn-ghost bg-base-200 text-base-content/70 hover:bg-base-300" 
+                                  : "btn-primary text-slate-900 shadow-sm"
+                              }`}
+                              title={isFollowingAuthor ? "Following traveler (Click to unfollow)" : "Follow traveler (+15 pts)"}
+                            >
+                              {isFollowingAuthor ? (
+                                <>
+                                  <UserCheck className="w-3 h-3 text-success" />
+                                  <span>Following</span>
+                                </>
+                              ) : (
+                                <>
+                                  <UserPlus className="w-3 h-3" />
+                                  <span>Follow</span>
+                                </>
+                              )}
+                            </button>
+                          );
+                        })()}
                       </div>
                       <span className="text-[10px] text-base-content/50">{post.time}</span>
                     </div>
                   </div>
                   
                   {post.destination && (
-                    <div className="flex items-center gap-1 text-xs text-primary font-bold bg-primary/10 py-1.5 px-3 rounded-full">
+                    <div className="flex items-center gap-1 text-xs text-primary font-bold bg-primary/10 py-1.5 px-3 rounded-full shrink-0">
                       <MapPin className="w-3.5 h-3.5" />
                       <span>{post.destination}</span>
                     </div>

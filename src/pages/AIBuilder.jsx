@@ -160,15 +160,20 @@ export default function AIBuilder() {
             
             <div className="form-control">
               <label className="label py-0.5"><span className="label-text text-xs font-semibold">Where to?</span></label>
-              <select 
-                className="select select-sm select-bordered w-full rounded-lg text-xs"
+              <input 
+                type="text" 
+                list="ai-builder-destination-list"
+                placeholder="e.g. Cox's Bazar Beach, Sylhet, Sajek..." 
+                className="input input-sm input-bordered w-full rounded-lg text-xs"
                 value={destination}
                 onChange={(e) => setDestination(e.target.value)}
-              >
+                required
+              />
+              <datalist id="ai-builder-destination-list">
                 {MOCK_DESTINATIONS.map(d => (
                   <option key={d.id} value={d.name}>{d.name}</option>
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div className="form-control">

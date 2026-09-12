@@ -455,20 +455,79 @@ CREATE TABLE IF NOT EXISTS `tour_plans` (
 CREATE TABLE IF NOT EXISTS `tour_plan_places_modified` (
   `tour_plan_place_id` varchar(255) NOT NULL,
   `tour_plan_id` varchar(255) NOT NULL,
-  `place_id` varchar(255) NOT NULL,
-  `visit_date` date DEFAULT NULL,
+  `place_id` varchar(255) DEFAULT NULL,
+  `place_name` varchar(255) DEFAULT NULL,
   `location` varchar(250) DEFAULT NULL,
+  `stop_order` int(11) DEFAULT 1,
+  `latitude` decimal(10,8) DEFAULT NULL,
+  `longitude` decimal(11,8) DEFAULT NULL,
+  `visit_date` date DEFAULT NULL,
   `notes` text DEFAULT NULL,
-  `transportation` enum('Flight','Train','Bus','Car','Bike','Walk','Multiple') NOT NULL,
-  `accommodation_type` enum('Hotel','Hostel','Airbnb','Home_Stay','Camping','Other') DEFAULT NULL,
+  `transport_mode` varchar(100) DEFAULT NULL,
+  `transport_details` text DEFAULT NULL,
+  `transport_cost` decimal(10,2) DEFAULT 0.00,
+  `has_accommodation` tinyint(1) DEFAULT 0,
+  `accommodation_type` varchar(100) DEFAULT NULL,
+  `accommodation_name` varchar(255) DEFAULT NULL,
+  `accommodation_cost` decimal(10,2) DEFAULT 0.00,
   `accommodation_details` text DEFAULT NULL,
-  `Expense` double DEFAULT NULL,
+  `stay_duration` varchar(100) DEFAULT NULL,
+  `status` varchar(50) DEFAULT 'pending',
+  `is_spontaneous` tinyint(1) DEFAULT 0,
+  `discovery_badge` varchar(100) DEFAULT NULL,
+  `check_in_time` datetime DEFAULT NULL,
+  `check_in_lat` decimal(10,8) DEFAULT NULL,
+  `check_in_lng` decimal(11,8) DEFAULT NULL,
+  `check_in_note` text DEFAULT NULL,
+  `photos` LONGTEXT DEFAULT NULL,
+  `Expense` double DEFAULT 0.00,
   `created_at` datetime DEFAULT current_timestamp(),
   PRIMARY KEY (`tour_plan_place_id`),
   KEY `fk_tpp_tour_plan` (`tour_plan_id`),
   KEY `fk_tpp_place` (`place_id`),
-  CONSTRAINT `fk_tpp_place` FOREIGN KEY (`place_id`) REFERENCES `places` (`place_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_tpp_tour_plan` FOREIGN KEY (`tour_plan_id`) REFERENCES `tour_plans` (`tour_plan_id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tour_plan_members`
+--
+
+CREATE TABLE IF NOT EXISTS `tour_plan_members` (
+  `id` varchar(255) NOT NULL,
+  `tour_plan_id` varchar(255) NOT NULL,
+  `user_id` varchar(255) DEFAULT NULL,
+  `name` varchar(150) NOT NULL,
+  `username` varchar(100) DEFAULT NULL,
+  `avatar` LONGTEXT DEFAULT NULL,
+  `phone` varchar(30) DEFAULT NULL,
+  `role` varchar(100) DEFAULT 'Member',
+  `invite_status` enum('accepted','pending','declined') DEFAULT 'accepted',
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `fk_tpm_tour_plan` (`tour_plan_id`),
+  CONSTRAINT `fk_tpm_tour_plan` FOREIGN KEY (`tour_plan_id`) REFERENCES `tour_plans` (`tour_plan_id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tour_plan_expenses`
+--
+
+CREATE TABLE IF NOT EXISTS `tour_plan_expenses` (
+  `expense_id` varchar(255) NOT NULL,
+  `tour_plan_id` varchar(255) NOT NULL,
+  `stop_id` varchar(255) DEFAULT NULL,
+  `category` varchar(100) DEFAULT 'General',
+  `amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `note` text DEFAULT NULL,
+  `timestamp` varchar(50) DEFAULT NULL,
+  `created_at` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`expense_id`),
+  KEY `fk_tpe_tour_plan` (`tour_plan_id`),
+  CONSTRAINT `fk_tpe_tour_plan` FOREIGN KEY (`tour_plan_id`) REFERENCES `tour_plans` (`tour_plan_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------

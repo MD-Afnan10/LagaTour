@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useExpeditions } from "../../context/ExpeditionContext";
 import { useAuth } from "../../context/AuthContext";
+import api from "../../services/api";
 import { 
   X, 
   Map, 
@@ -102,6 +103,18 @@ export default function ExpeditionFormModal({
 
   // Load user's groups dynamically (merging context existing groups + localStorage ts_groups)
   const [userTourGroups, setUserTourGroups] = useState([]);
+  const [dbConnectedTravelers, setDbConnectedTravelers] = useState([]);
+
+  useEffect(() => {
+    const currentUserId = currentUser?.id || currentUser?.user_id;
+    if (isOpen && currentUserId) {
+      api.getConnectedTravelers(currentUserId).then(res => {
+        if (res && res.travelers) {
+          setDbConnectedTravelers(res.travelers);
+        }
+      }).catch(() => {});
+    }
+  }, [isOpen, currentUser]);
 
   useEffect(() => {
     const savedGroups = localStorage.getItem("ts_groups");
@@ -218,8 +231,16 @@ export default function ExpeditionFormModal({
 
   if (!isOpen) return null;
 
+  // Combine live database connected followers/following with companions database
+  const allCompanionsPool = [...dbConnectedTravelers];
+  companionsDatabase.forEach(cd => {
+    if (!allCompanionsPool.some(p => p.id === cd.id || p.username === cd.username)) {
+      allCompanionsPool.push(cd);
+    }
+  });
+
   // RULE: The user can ONLY add users that are either a Follower of the author OR being Followed by the author!
-  const eligibleConnectedCompanions = companionsDatabase.filter(c => {
+  const eligibleConnectedCompanions = allCompanionsPool.filter(c => {
     return c.isFollower === true || c.isFollowing === true || (c.connectionType && c.connectionType !== "Not Connected");
   });
 
@@ -545,16 +566,52 @@ export default function ExpeditionFormModal({
             </div>
 
             <div className="form-control">
-              <label className="label py-1"><span className="label-text text-xs font-bold">Main Final Destination</span></label>
-              <select 
-                className="select select-sm select-bordered w-full rounded-xl text-xs"
+              <label className="label py-1">
+                <span className="label-text text-xs font-bold">Main Final Destination</span>
+                <span className="text-[10px] text-base-content/50">Type custom name or pick from suggestions</span>
+              </label>
+              <input 
+                type="text" 
+                list="final-destination-list"
+                placeholder="e.g. Sylhet, Cox's Bazar, Bandarban, Tanguar Haor..." 
+                className="input input-sm input-bordered w-full rounded-xl text-xs" 
                 value={destination}
                 onChange={(e) => setDestination(e.target.value)}
-              >
+                required
+              />
+              <datalist id="final-destination-list">
                 {placesDatabase.map(p => (
                   <option key={p.id} value={p.name}>{p.name} ({p.division})</option>
                 ))}
-              </select>
+                <option value="Cox's Bazar">Cox's Bazar (Chattogram)</option>
+                <option value="Bandarban">Bandarban (Chattogram)</option>
+                <option value="Sylhet">Sylhet (Sylhet)</option>
+                <option value="Sajek Valley">Sajek Valley (Rangamati)</option>
+                <option value="Sreemangal">Sreemangal (Sylhet)</option>
+                <option value="Saint Martin's Island">Saint Martin's Island (Chattogram)</option>
+                <option value="Kuakata">Kuakata (Barishal)</option>
+                <option value="Sundarbans">Sundarbans (Khulna)</option>
+                <option value="Tanguar Haor">Tanguar Haor (Sunamganj)</option>
+                <option value="Rangamati">Rangamati (Chattogram)</option>
+              </datalist>
+
+              {/* Quick Select Preset Chips */}
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {["Sylhet", "Cox's Bazar", "Bandarban", "Sajek Valley", "Sreemangal", "Kuakata"].map((destName) => (
+                  <button
+                    key={destName}
+                    type="button"
+                    onClick={() => setDestination(destName)}
+                    className={`btn btn-xs rounded-lg text-[10px] py-0 px-2 transition-all ${
+                      destination === destName 
+                        ? 'btn-primary text-primary-content font-bold' 
+                        : 'btn-ghost border border-base-300 text-base-content/70 hover:border-primary/40'
+                    }`}
+                  >
+                    {destName}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="form-control">

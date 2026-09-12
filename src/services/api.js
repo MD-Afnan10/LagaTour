@@ -626,10 +626,276 @@ export const api = {
 
     const res = await fetch(`${API_BASE_URL}/rankings/places?${params.toString()}`);
     return await handleResponse(res);
+  },
+
+  // ===================== TOUR PLANS & EXPEDITIONS =====================
+
+  /**
+   * Fetch all tour plans / expeditions with filters
+   */
+  async fetchTourPlans(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.status && filters.status !== "all") params.append("status", filters.status);
+    if (filters.travelType && filters.travelType !== "All") params.append("travelType", filters.travelType);
+    if (filters.season && filters.season !== "All") params.append("season", filters.season);
+    if (filters.transportation && filters.transportation !== "All") params.append("transportation", filters.transportation);
+    if (filters.destination && filters.destination !== "All") params.append("destination", filters.destination);
+    if (filters.search) params.append("search", filters.search);
+    if (filters.userId) params.append("userId", filters.userId);
+    if (filters.currentUserId) params.append("currentUserId", filters.currentUserId);
+    if (filters.maxBudget) params.append("maxBudget", filters.maxBudget);
+    if (filters.sortBy) params.append("sortBy", filters.sortBy);
+    if (filters.limit) params.append("limit", filters.limit);
+    if (filters.offset) params.append("offset", filters.offset);
+
+    const res = await fetch(`${API_BASE_URL}/tour-plans?${params.toString()}`);
+    const data = await handleResponse(res);
+    return data.expeditions || [];
+  },
+
+  /**
+   * Fetch single tour plan by ID
+   */
+  async fetchTourPlanById(id, currentUserId = null) {
+    const params = new URLSearchParams();
+    if (currentUserId) params.append("currentUserId", currentUserId);
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${id}${params.toString() ? `?${params.toString()}` : ""}`);
+    const data = await handleResponse(res);
+    return data.expedition || null;
+  },
+
+  /**
+   * Create a new tour plan
+   */
+  async createTourPlan(payload) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Update tour plan details and stops
+   */
+  async updateTourPlan(id, payload) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete tour plan
+   */
+  async deleteTourPlan(id) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${id}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Start expedition (transitions to 'ongoing')
+   */
+  async startTourPlan(id, userId = null) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${id}/start`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * End expedition (transitions to 'completed')
+   */
+  async endTourPlan(id, userId = null) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${id}/end`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Restart expedition (resets stops & starts new ongoing live cockpit)
+   */
+  async restartTourPlan(id, userId = null) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${id}/restart`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Live GPS Check-in at a planned stop
+   */
+  async checkInTourStop(tourId, checkInData) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/stops/checkin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(checkInData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Skip a scheduled stop
+   */
+  async skipTourStop(tourId, stopId, reason) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/stops/${stopId}/skip`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Add a spontaneous / unexpected stop discovered on the road
+   */
+  async addSpontaneousTourStop(tourId, discoveryData) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/stops/spontaneous`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(discoveryData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Add an expense to a tour plan
+   */
+  async addTourExpense(tourId, expenseData) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/expenses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(expenseData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete an expense
+   */
+  async deleteTourExpense(tourId, expenseId) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/expenses/${expenseId}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Toggle like for a tour plan
+   */
+  async likeTourPlan(tourId, user) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/like`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Toggle save / bookmark for a tour plan
+   */
+  async saveTourPlan(tourId, user) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/save`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Submit rating & review for a tour plan
+   */
+  async rateTourPlan(tourId, user, rating, reviewText) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/rate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, rating, reviewText })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Add comment to a tour plan
+   */
+  async commentTourPlan(tourId, user, commentText) {
+    const res = await fetch(`${API_BASE_URL}/tour-plans/${tourId}/comment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user, commentText })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * ==========================================
+   * FOLLOWER & FOLLOWING APIs
+   * ==========================================
+   */
+
+  /**
+   * Toggle follow / unfollow a user
+   */
+  async toggleFollowUser(targetUserId, followerId) {
+    const res = await fetch(`${API_BASE_URL}/users/${targetUserId}/follow`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ followerId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Get follow status between current user and target user
+   */
+  async getFollowStatus(targetUserId, followerId = null) {
+    const query = followerId ? `?followerId=${encodeURIComponent(followerId)}` : "";
+    const res = await fetch(`${API_BASE_URL}/users/${targetUserId}/follow-status${query}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Get followers list of a user
+   */
+  async getFollowers(targetUserId, viewerId = null) {
+    const query = viewerId ? `?viewerId=${encodeURIComponent(viewerId)}` : "";
+    const res = await fetch(`${API_BASE_URL}/users/${targetUserId}/followers${query}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Get following list of a user
+   */
+  async getFollowing(targetUserId, viewerId = null) {
+    const query = viewerId ? `?viewerId=${encodeURIComponent(viewerId)}` : "";
+    const res = await fetch(`${API_BASE_URL}/users/${targetUserId}/following${query}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Get connected travelers (followers & following) for companion invite
+   */
+  async getConnectedTravelers(userId) {
+    const res = await fetch(`${API_BASE_URL}/users/${userId}/connected-travelers`);
+    return await handleResponse(res);
   }
 };
 
 export default api;
+
 
 
 

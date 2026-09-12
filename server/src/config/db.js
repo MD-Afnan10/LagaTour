@@ -471,6 +471,12 @@ export async function initDatabase() {
     try {
       const [tpCols] = await p.query("SHOW COLUMNS FROM tour_plans");
       const colNames = tpCols.map(c => c.Field);
+      if (!colNames.includes("status")) await p.query("ALTER TABLE tour_plans ADD COLUMN status varchar(50) DEFAULT 'planned'");
+      if (!colNames.includes("spent_budget")) await p.query("ALTER TABLE tour_plans ADD COLUMN spent_budget decimal(12,2) DEFAULT 0.00");
+      if (!colNames.includes("cover_image")) await p.query("ALTER TABLE tour_plans ADD COLUMN cover_image LONGTEXT NULL");
+      if (!colNames.includes("social_post_id")) await p.query("ALTER TABLE tour_plans ADD COLUMN social_post_id varchar(255) NULL");
+      if (!colNames.includes("actual_started_at")) await p.query("ALTER TABLE tour_plans ADD COLUMN actual_started_at datetime NULL");
+      if (!colNames.includes("actual_ended_at")) await p.query("ALTER TABLE tour_plans ADD COLUMN actual_ended_at datetime NULL");
       if (!colNames.includes("saves_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN saves_count int(11) DEFAULT 0");
       if (!colNames.includes("views_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN views_count int(11) DEFAULT 0");
       if (!colNames.includes("likes_count")) await p.query("ALTER TABLE tour_plans ADD COLUMN likes_count int(11) DEFAULT 0");
@@ -481,30 +487,114 @@ export async function initDatabase() {
       // safe fallback
     }
 
-
-    // 20. Create Tour Plan Places Modified table
+    // 20. Create Tour Plan Places Modified table (Spots & Itinerary Stops)
     await p.query(`
       CREATE TABLE IF NOT EXISTS \`tour_plan_places_modified\` (
         \`tour_plan_place_id\` varchar(255) NOT NULL,
         \`tour_plan_id\` varchar(255) NOT NULL,
-        \`place_id\` varchar(255) NOT NULL,
-        \`visit_date\` date DEFAULT NULL,
+        \`place_id\` varchar(255) DEFAULT NULL,
+        \`place_name\` varchar(255) DEFAULT NULL,
         \`location\` varchar(250) DEFAULT NULL,
+        \`stop_order\` int(11) DEFAULT 1,
+        \`latitude\` decimal(10,8) DEFAULT NULL,
+        \`longitude\` decimal(11,8) DEFAULT NULL,
+        \`visit_date\` date DEFAULT NULL,
         \`notes\` text DEFAULT NULL,
-        \`transportation\` enum('Flight','Train','Bus','Car','Bike','Walk','Multiple') NOT NULL DEFAULT 'Bus',
-        \`accommodation_type\` enum('Hotel','Hostel','Airbnb','Home_Stay','Camping','Other') DEFAULT 'Hotel',
+        \`transport_mode\` varchar(100) DEFAULT NULL,
+        \`transport_details\` text DEFAULT NULL,
+        \`transport_cost\` decimal(10,2) DEFAULT 0.00,
+        \`has_accommodation\` tinyint(1) DEFAULT 0,
+        \`accommodation_type\` varchar(100) DEFAULT NULL,
+        \`accommodation_name\` varchar(255) DEFAULT NULL,
+        \`accommodation_cost\` decimal(10,2) DEFAULT 0.00,
         \`accommodation_details\` text DEFAULT NULL,
-        \`Expense\` double DEFAULT NULL,
+        \`stay_duration\` varchar(100) DEFAULT NULL,
+        \`status\` varchar(50) DEFAULT 'pending',
+        \`is_spontaneous\` tinyint(1) DEFAULT 0,
+        \`discovery_badge\` varchar(100) DEFAULT NULL,
+        \`check_in_time\` datetime DEFAULT NULL,
+        \`check_in_lat\` decimal(10,8) DEFAULT NULL,
+        \`check_in_lng\` decimal(11,8) DEFAULT NULL,
+        \`check_in_note\` text DEFAULT NULL,
+        \`photos\` LONGTEXT DEFAULT NULL,
+        \`Expense\` double DEFAULT 0.00,
         \`created_at\` datetime DEFAULT current_timestamp(),
         PRIMARY KEY (\`tour_plan_place_id\`),
         KEY \`fk_tpp_tour_plan\` (\`tour_plan_id\`),
         KEY \`fk_tpp_place\` (\`place_id\`),
-        CONSTRAINT \`fk_tpp_place\` FOREIGN KEY (\`place_id\`) REFERENCES \`places\` (\`place_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
         CONSTRAINT \`fk_tpp_tour_plan\` FOREIGN KEY (\`tour_plan_id\`) REFERENCES \`tour_plans\` (\`tour_plan_id\`) ON DELETE CASCADE ON UPDATE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 21. Create Tour Ratings table
+    // Ensure all columns exist in tour_plan_places_modified if it already existed
+    try {
+      const [tppCols] = await p.query("SHOW COLUMNS FROM tour_plan_places_modified");
+      const colNames = tppCols.map(c => c.Field);
+      if (!colNames.includes("place_name")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN place_name varchar(255) NULL");
+      if (!colNames.includes("stop_order")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN stop_order int(11) DEFAULT 1");
+      if (!colNames.includes("latitude")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN latitude decimal(10,8) NULL");
+      if (!colNames.includes("longitude")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN longitude decimal(11,8) NULL");
+      if (!colNames.includes("transport_mode")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN transport_mode varchar(100) NULL");
+      if (!colNames.includes("transport_details")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN transport_details text NULL");
+      if (!colNames.includes("transport_cost")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN transport_cost decimal(10,2) DEFAULT 0.00");
+      if (!colNames.includes("has_accommodation")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN has_accommodation tinyint(1) DEFAULT 0");
+      if (!colNames.includes("accommodation_name")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN accommodation_name varchar(255) NULL");
+      if (!colNames.includes("accommodation_cost")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN accommodation_cost decimal(10,2) DEFAULT 0.00");
+      if (!colNames.includes("stay_duration")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN stay_duration varchar(100) NULL");
+      if (!colNames.includes("status")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN status varchar(50) DEFAULT 'pending'");
+      if (!colNames.includes("is_spontaneous")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN is_spontaneous tinyint(1) DEFAULT 0");
+      if (!colNames.includes("discovery_badge")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN discovery_badge varchar(100) NULL");
+      if (!colNames.includes("check_in_time")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN check_in_time datetime NULL");
+      if (!colNames.includes("check_in_lat")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN check_in_lat decimal(10,8) NULL");
+      if (!colNames.includes("check_in_lng")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN check_in_lng decimal(11,8) NULL");
+      if (!colNames.includes("check_in_note")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN check_in_note text NULL");
+      if (!colNames.includes("photos")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN photos LONGTEXT NULL");
+      if (!colNames.includes("Expense") && !colNames.includes("expense")) await p.query("ALTER TABLE tour_plan_places_modified ADD COLUMN Expense double DEFAULT 0.00");
+
+      try {
+        await p.query("ALTER TABLE tour_plan_places_modified MODIFY COLUMN place_id varchar(255) NULL");
+      } catch (e) {}
+    } catch (tppAlterErr) {
+      // safe fallback
+    }
+
+    // 21. Create Tour Plan Members table (Companions & Groups)
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`tour_plan_members\` (
+        \`id\` varchar(255) NOT NULL,
+        \`tour_plan_id\` varchar(255) NOT NULL,
+        \`user_id\` varchar(255) DEFAULT NULL,
+        \`name\` varchar(150) NOT NULL,
+        \`username\` varchar(100) DEFAULT NULL,
+        \`avatar\` LONGTEXT DEFAULT NULL,
+        \`phone\` varchar(30) DEFAULT NULL,
+        \`role\` varchar(100) DEFAULT 'Member',
+        \`invite_status\` enum('accepted','pending','declined') DEFAULT 'accepted',
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`id\`),
+        KEY \`fk_tpm_tour_plan\` (\`tour_plan_id\`),
+        CONSTRAINT \`fk_tpm_tour_plan\` FOREIGN KEY (\`tour_plan_id\`) REFERENCES \`tour_plans\` (\`tour_plan_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 22. Create Tour Plan Expenses table
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`tour_plan_expenses\` (
+        \`expense_id\` varchar(255) NOT NULL,
+        \`tour_plan_id\` varchar(255) NOT NULL,
+        \`stop_id\` varchar(255) DEFAULT NULL,
+        \`category\` varchar(100) DEFAULT 'General',
+        \`amount\` decimal(10,2) NOT NULL DEFAULT 0.00,
+        \`note\` text DEFAULT NULL,
+        \`timestamp\` varchar(50) DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`expense_id\`),
+        KEY \`fk_tpe_tour_plan\` (\`tour_plan_id\`),
+        CONSTRAINT \`fk_tpe_tour_plan\` FOREIGN KEY (\`tour_plan_id\`) REFERENCES \`tour_plans\` (\`tour_plan_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 23. Create Tour Ratings table
     await p.query(`
       CREATE TABLE IF NOT EXISTS \`tour_ratings\` (
         \`rating_id\` varchar(255) NOT NULL,
@@ -522,7 +612,7 @@ export async function initDatabase() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // 22. Create Follows table
+    // 24. Create Follows table
     await p.query(`
       CREATE TABLE IF NOT EXISTS \`follows\` (
         \`follow_id\` varchar(255) NOT NULL,

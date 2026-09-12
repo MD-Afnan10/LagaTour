@@ -16,12 +16,14 @@ import {
   Home as HomeIcon, 
   Sparkles,
   Share2,
-  Trash2
+  Trash2,
+  RotateCcw
 } from "lucide-react";
 
 export default function ExpeditionCard({
   expedition,
   onStart,
+  onRestart,
   onTrack,
   onEdit,
   onViewDetail,
@@ -238,13 +240,26 @@ export default function ExpeditionCard({
               </button>
             )}
 
-            {isCompleted && onViewSummary && (
-              <button 
-                onClick={() => onViewSummary(expedition)}
-                className="btn btn-xs btn-warning text-slate-900 font-black rounded-lg gap-1 shadow-md"
-              >
-                <Trophy className="w-3 h-3" /> AI Summary
-              </button>
+            {isCompleted && (
+              <>
+                {onViewSummary && (
+                  <button 
+                    onClick={() => onViewSummary(expedition)}
+                    className="btn btn-xs btn-warning text-slate-900 font-black rounded-lg gap-1 shadow-md"
+                  >
+                    <Trophy className="w-3 h-3" /> AI Summary
+                  </button>
+                )}
+                {onRestart && (
+                  <button 
+                    onClick={() => onRestart(expedition.id)}
+                    className="btn btn-xs btn-ghost border border-primary/40 text-primary hover:bg-primary hover:text-white rounded-lg gap-1 font-bold shadow-sm"
+                    title="Restart / Re-travel this Tour Plan with fresh live tracking"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Restart Tour
+                  </button>
+                )}
+              </>
             )}
 
             {onPublish && !expedition.isPublished && (

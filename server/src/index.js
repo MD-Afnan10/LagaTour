@@ -8,6 +8,8 @@ import authRoutes from "./routes/authRoutes.js";
 import placeRoutes from "./routes/placeRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import rankingRoutes from "./routes/rankingRoutes.js";
+import tourPlanRoutes from "./routes/tourPlanRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
 import { initSocket } from "./services/socketService.js";
 
 dotenv.config();
@@ -42,9 +44,12 @@ app.get("/api/health", (req, res) => {
 // API Routes
 app.use("/api", postRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/places", placeRoutes);
 app.use("/api/chats", chatRoutes);
 app.use("/api/rankings", rankingRoutes);
+app.use("/api/tour-plans", tourPlanRoutes);
+app.use("/api/expeditions", tourPlanRoutes);
 
 
 

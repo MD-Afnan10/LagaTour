@@ -1,4 +1,4 @@
-﻿import { query } from "../config/db.js";
+import { query } from "../config/db.js";
 import { calculateLeague } from "../utils/leagueHelper.js";
 
 // Helper to provide a guaranteed valid avatar URL
@@ -504,7 +504,7 @@ export async function getRankedPlans(req, res) {
           tpm.tour_plan_id,
           tpm.place_id,
           tpm.location,
-          tpm.transportation,
+          tpm.transport_mode,
           tpm.Expense,
           p.place_name AS placeName,
           p.district,
@@ -522,7 +522,7 @@ export async function getRankedPlans(req, res) {
           placeName: p.placeName || p.location || "Destined Stop",
           district: p.district || "",
           division: p.division || "",
-          transportation: p.transportation || "Bus",
+          transportMode: p.transport_mode || "Bus",
           expense: p.Expense || 0
         });
       });

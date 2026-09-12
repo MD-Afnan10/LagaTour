@@ -10,6 +10,7 @@ import EditPostModal from "../components/modals/EditPostModal";
 import DeletePostModal from "../components/modals/DeletePostModal";
 import AddPlaceLocationModal from "../components/modals/AddPlaceLocationModal";
 import EditMyPlaceModal from "../components/modals/EditMyPlaceModal";
+import FollowersModal from "../components/modals/FollowersModal";
 import { 
   User, 
   MapPin, 
@@ -97,9 +98,28 @@ export default function UserProfile() {
     (currentUser || DEFAULT_EMPTY_USER)
   );
 
-  // Follow State
+  // Follow State & Real-time Counters
   const [isFollowing, setIsFollowing] = useState(false);
   const [followerCount, setFollowerCount] = useState(matchedUser.followers || 0);
+  const [followingCount, setFollowingCount] = useState(matchedUser.following || 0);
+  const [isFollowersModalOpen, setIsFollowersModalOpen] = useState(false);
+  const [followersModalTab, setFollowersModalTab] = useState("followers");
+
+  const currentUserId = currentUser?.id || currentUser?.user_id;
+  const targetUserId = matchedUser?.id || matchedUser?.user_id;
+
+  // Sync real-time follow status from backend MySQL
+  useEffect(() => {
+    if (targetUserId) {
+      api.getFollowStatus(targetUserId, currentUserId).then(res => {
+        if (res && res.success) {
+          setIsFollowing(Boolean(res.isFollowing));
+          setFollowerCount(res.followersCount !== undefined ? res.followersCount : (matchedUser.followers || 0));
+          setFollowingCount(res.followingCount !== undefined ? res.followingCount : (matchedUser.following || 0));
+        }
+      }).catch(() => {});
+    }
+  }, [targetUserId, currentUserId, matchedUser.followers, matchedUser.following]);
 
   // Active Tab: 'stories' | 'saved' | 'plans' | 'my_places'
   const [activeTab, setActiveTab] = useState("stories");
@@ -160,15 +180,36 @@ export default function UserProfile() {
     }
   };
 
-  const handleToggleFollow = () => {
-    if (isFollowing) {
-      setIsFollowing(false);
-      setFollowerCount(prev => Math.max(0, prev - 1));
-    } else {
-      setIsFollowing(true);
-      setFollowerCount(prev => prev + 1);
-      if (addPoints) addPoints(15);
+  const handleToggleFollow = async () => {
+    if (!currentUserId) {
+      navigate("/auth");
+      return;
     }
+
+    const nextFollowing = !isFollowing;
+    setIsFollowing(nextFollowing);
+    setFollowerCount(prev => nextFollowing ? prev + 1 : Math.max(0, prev - 1));
+
+    if (nextFollowing && addPoints) {
+      addPoints(15);
+    }
+
+    setPostActionMsg(nextFollowing ? `🌟 Following @${matchedUser.username}! (+15 points awarded)` : `Unfollowed @${matchedUser.username}`);
+    setTimeout(() => setPostActionMsg(""), 2500);
+
+    try {
+      const res = await api.toggleFollowUser(targetUserId, currentUserId);
+      if (res && res.success) {
+        if (res.followersCount !== undefined) setFollowerCount(res.followersCount);
+      }
+    } catch (err) {
+      console.warn("Follow toggle failed:", err.message);
+    }
+  };
+
+  const handleOpenFollowersModal = (tab = "followers") => {
+    setFollowersModalTab(tab);
+    setIsFollowersModalOpen(true);
   };
 
   const handleSendMessage = () => {
@@ -369,18 +410,38 @@ export default function UserProfile() {
               <Trophy className="w-4 h-4" /> {matchedUser.points || 350}
             </span>
           </div>
-          <div className="leading-tight border-l sm:border-x border-base-200">
-            <span className="text-[10px] text-base-content/50 block font-bold uppercase">Followers</span>
-            <span className="text-lg font-black text-primary">{followerCount}</span>
+
+          <div 
+            onClick={() => handleOpenFollowersModal("followers")}
+            className="leading-tight border-l sm:border-x border-base-200 cursor-pointer hover:bg-base-200/70 rounded-xl p-1 transition-all group"
+            title="Click to view Followers list"
+          >
+            <span className="text-[10px] text-base-content/50 group-hover:text-primary block font-bold uppercase flex items-center justify-center gap-0.5">
+              Followers
+            </span>
+            <span className="text-lg font-black text-primary group-hover:scale-105 inline-block transition-transform">
+              {followerCount}
+            </span>
           </div>
-          <div className="leading-tight border-t sm:border-t-0 sm:border-r border-base-200 pt-2 sm:pt-0">
-            <span className="text-[10px] text-base-content/50 block font-bold uppercase">Following</span>
-            <span className="text-lg font-black text-secondary">{matchedUser.following || 0}</span>
+
+          <div 
+            onClick={() => handleOpenFollowersModal("following")}
+            className="leading-tight border-t sm:border-t-0 sm:border-r border-base-200 pt-2 sm:pt-1 cursor-pointer hover:bg-base-200/70 rounded-xl p-1 transition-all group"
+            title="Click to view Following list"
+          >
+            <span className="text-[10px] text-base-content/50 group-hover:text-secondary block font-bold uppercase flex items-center justify-center gap-0.5">
+              Following
+            </span>
+            <span className="text-lg font-black text-secondary group-hover:scale-105 inline-block transition-transform">
+              {followingCount}
+            </span>
           </div>
+
           <div className="leading-tight border-t sm:border-t-0 sm:border-r border-base-200 pt-2 sm:pt-0">
             <span className="text-[10px] text-base-content/50 block font-bold uppercase">Trips Shared</span>
             <span className="text-lg font-black text-accent">{userPosts.length}</span>
           </div>
+
           <div className="leading-tight border-t sm:border-t-0 col-span-2 sm:col-span-1 pt-2 sm:pt-0">
             <span className="text-[10px] text-base-content/50 block font-bold uppercase">Account Status</span>
             <span className="text-sm font-bold text-success capitalize">{matchedUser.account_status || "Active"}</span>
@@ -846,6 +907,24 @@ export default function UserProfile() {
         currentUser={currentUser}
         onClose={() => setEditingPlace(null)}
         onSaved={handlePlaceSaved}
+      />
+
+      {/* Followers & Following Network Modal */}
+      <FollowersModal
+        isOpen={isFollowersModalOpen}
+        onClose={() => setIsFollowersModalOpen(false)}
+        userId={matchedUser.id || matchedUser.user_id}
+        userName={matchedUser.name || matchedUser.username}
+        initialTab={followersModalTab}
+        onFollowChange={() => {
+          api.getFollowStatus(targetUserId, currentUserId).then(res => {
+            if (res && res.success) {
+              setIsFollowing(Boolean(res.isFollowing));
+              setFollowerCount(res.followersCount);
+              setFollowingCount(res.followingCount);
+            }
+          }).catch(() => {});
+        }}
       />
 
     </div>
