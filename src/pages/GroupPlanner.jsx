@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { MOCK_GROUP_TOURS, MOCK_DESTINATIONS, MOCK_USERS } from "../data/mockData";
+import { api } from "../services/api";
+import { socketService } from "../services/socketService";
+import { MOCK_DESTINATIONS } from "../data/mockData";
 import { 
   Users, 
   MapPin, 
@@ -21,97 +23,61 @@ import {
   ShieldCheck,
   Clock,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  Send,
+  Trash2,
+  RefreshCw,
+  ExternalLink,
+  Crown,
+  Eye,
+  Info,
+  Bell,
+  XCircle,
+  UserPlus,
+  Lightbulb,
+  Check,
+  X,
+  MessageCircle,
+  ThumbsUp,
+  ThumbsDown,
+  HelpCircle
 } from "lucide-react";
 import confetti from "canvas-confetti";
 
+function formatDate(d) {
+  if (!d) return "Dec 01, 2026";
+  try {
+    const clean = String(d).split("T")[0];
+    const parts = clean.split("-");
+    if (parts.length === 3) {
+      const [y, m, day] = parts;
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const monthName = months[parseInt(m, 10) - 1] || m;
+      return `${monthName} ${parseInt(day, 10)}, ${y}`;
+    }
+    return String(d).substring(0, 15);
+  } catch {
+    return String(d).substring(0, 15);
+  }
+}
+
 export default function GroupPlanner() {
   const { currentUser, addPoints } = useAuth();
-  
-  // Build initial demo groups dynamically ensuring current user is part of at least 2 expeditions (1 Organized, 1 Joined)
-  const getInitialGroups = () => {
-    const userObj = currentUser || {
-      id: "user_demo",
-      name: "Travel Explorer",
-      username: "traveler",
-      avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=traveler",
-      league: "Explorer"
-    };
+  const currentUserId = currentUser?.id || currentUser?.user_id;
 
-    const saved = localStorage.getItem("ts_groups");
-    let baseList = MOCK_GROUP_TOURS;
-    if (saved) {
-      try {
-        baseList = JSON.parse(saved);
-      } catch (err) {
-        console.error("Failed to parse saved group expeditions", err);
-      }
-    }
+  // List of all groups from backend
+  const [groups, setGroups] = useState([]);
+  const [loadingGroups, setLoadingGroups] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
 
-    // Ensure group_1 includes currentUser in members list
-    const updatedBase = baseList.map(g => {
-      if (g.id === "group_1") {
-        const hasUser = g.members?.some(m => m.id === userObj.id || m.username === userObj.username || m.name === userObj.name);
-        if (!hasUser) {
-          return {
-            ...g,
-            members: [userObj, ...(g.members || [])]
-          };
-        }
-      }
-      return g;
-    });
-
-    // Check if currentUser already has an organized group
-    const hasOrganizedGroup = updatedBase.some(g => 
-      g.organizer?.id === userObj.id || 
-      g.organizer?.username === userObj.username || 
-      g.organizer?.name === userObj.name
-    );
-
-    if (!hasOrganizedGroup) {
-      const demoOrganizedGroup = {
-        id: "group_demo_org_" + (userObj.id || "demo"),
-        title: "Cox's Bazar Marine Drive Rally 🏖️",
-        destination: "Cox's Bazar Beach",
-        travelDate: "2026-12-10",
-        estimatedBudget: 8500,
-        maxMembers: 8,
-        transportation: "AC Luxury Bus",
-        accommodationPlan: "Mermaid Eco Resort",
-        organizer: userObj,
-        members: [userObj, MOCK_USERS[1]],
-        requests: [
-          { id: "req_demo_1", user: MOCK_USERS[2], status: "pending" }
-        ],
-        itinerary: [
-          { day: "Day 1", plan: "Depart Dhaka by overnight bus. Check in at Mermaid Eco Resort. Sunset at Inani Beach." },
-          { day: "Day 2", plan: "Marine Drive road trip to Teknaf. Fresh seafood BBQ at Himchari waterfall." },
-          { day: "Day 3", plan: "Morning beach sports and shopping. Return bus to Dhaka." }
-        ],
-        checklist: [
-          { id: "chk_d1", task: "Book AC Bus group seats", completed: true, assignedTo: userObj.name },
-          { id: "chk_d2", task: "Confirm Eco Resort rooms", completed: true, assignedTo: userObj.name },
-          { id: "chk_d3", task: "Arrange Marine Drive open jeep rental", completed: false, assignedTo: "Nabil Ahmed" }
-        ],
-        expenses: [
-          { id: "exp_d1", title: "Resort Advance Booking", amount: 12000, paidBy: userObj.name, date: "2026-08-10" }
-        ],
-        messages: [
-          { id: "gmsg_d1", sender: userObj, text: "Welcome everyone to our Cox's Bazar rally! Check the checklist for assigned tasks.", time: "Aug 10, 10:00 AM" }
-        ]
-      };
-      return [demoOrganizedGroup, ...updatedBase];
-    }
-
-    return updatedBase;
-  };
-
-  const [groups, setGroups] = useState(getInitialGroups);
-
-  // State: selectedGroupId = null (shows list of expeditions), or string ID (shows details/workspace)
+  // Selected Group Workspace State
   const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [groupDetails, setGroupDetails] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   const [activeTab, setActiveTab] = useState("checklist"); // checklist, budget, chat, itinerary
+
+  // Detail Modal for "See More" option
+  const [detailModalGroup, setDetailModalGroup] = useState(null);
 
   // Modal State to create new expedition
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -122,802 +88,1611 @@ export default function GroupPlanner() {
   const [maxMembers, setMaxMembers] = useState(8);
   const [transport, setTransport] = useState("AC Bus & Boat");
   const [accommodation, setAccommodation] = useState("Beach Resort & Camping");
+  const [creatingGroup, setCreatingGroup] = useState(false);
 
-  // Inputs for workspace
+  // Workspace action inputs - Collaborative Checklist
   const [newTaskText, setNewTaskText] = useState("");
-  const [newTaskAssignee, setNewTaskAssignee] = useState("");
+  const [selectedAssigneeUserId, setSelectedAssigneeUserId] = useState("me");
+  const [customAssigneeName, setCustomAssigneeName] = useState("");
+  const [addingTask, setAddingTask] = useState(false);
   
+  // Workspace action inputs - Budget
   const [newExpTitle, setNewExpTitle] = useState("");
   const [newExpAmount, setNewExpAmount] = useState("");
   const [newExpPaidBy, setNewExpPaidBy] = useState("");
+  const [addingExpense, setAddingExpense] = useState(false);
 
+  // Workspace action inputs - Itinerary Suggestions & Appeals
+  const [isAppealModalOpen, setIsAppealModalOpen] = useState(false);
+  const [appealDay, setAppealDay] = useState("Day 1");
+  const [customAppealDay, setCustomAppealDay] = useState("");
+  const [appealActivity, setAppealActivity] = useState("");
+  const [appealReason, setAppealReason] = useState("");
+  const [submittingAppeal, setSubmittingAppeal] = useState(false);
+
+  // Organizer Rejection Modal State
+  const [rejectingSuggestion, setRejectingSuggestion] = useState(null);
+  const [rejectionReasonText, setRejectionReasonText] = useState("");
+  const [submittingRejection, setSubmittingRejection] = useState(false);
+
+  // Chat stream state inside workspace
+  const [chatMessages, setChatMessages] = useState([]);
+  const [loadingChat, setLoadingChat] = useState(false);
   const [newChatMessage, setNewChatMessage] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const chatBottomRef = useRef(null);
 
-  // Sync groups to localStorage
-  useEffect(() => {
-    localStorage.setItem("ts_groups", JSON.stringify(groups));
-  }, [groups]);
-
-  // Check if a user belongs to a group as member or organizer
-  const isMember = (group) => {
-    if (!group || !currentUser) return false;
-    const currentId = currentUser.id || currentUser.username;
-    const currentName = currentUser.name || currentUser.username;
-    const currentUsername = currentUser.username;
-
-    const isOrganizer = group.organizer?.id === currentId || 
-                        group.organizer?.username === currentUsername || 
-                        group.organizer?.name === currentName;
-
-    const isMemberInList = group.members?.some(m => 
-      m.id === currentId || 
-      m.username === currentUsername || 
-      m.name === currentName
-    );
-
-    return isOrganizer || isMemberInList;
+  // 1. Fetch All Groups from MySQL Backend
+  const loadGroups = async () => {
+    try {
+      setLoadingGroups(true);
+      setErrorMsg(null);
+      const data = await api.fetchGroups({ userId: currentUserId });
+      setGroups(data || []);
+    } catch (err) {
+      console.error("Error loading groups:", err);
+      setErrorMsg("Unable to load expeditions. Please ensure your backend is running.");
+    } finally {
+      setLoadingGroups(false);
+    }
   };
 
-  // Filter My Expeditions vs Explore Expeditions
-  const myExpeditions = groups.filter(g => isMember(g));
-  const exploreExpeditions = groups.filter(g => !isMember(g));
+  useEffect(() => {
+    loadGroups();
+  }, [currentUserId]);
 
-  const selectedGroup = groups.find(g => g.id === selectedGroupId);
-  const isSelectedGroupMember = selectedGroup ? isMember(selectedGroup) : false;
+  // 2. Fetch Selected Group Details when selectedGroupId changes
+  const loadGroupDetails = async (groupId) => {
+    if (!groupId) return;
+    try {
+      setLoadingDetails(true);
+      const data = await api.fetchGroupDetails(groupId, currentUserId);
+      setGroupDetails(data);
+      if (data?.conversationId) {
+        loadChatMessages(data.conversationId);
+      }
+    } catch (err) {
+      console.error("Error loading group details:", err);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
 
-  // Create new expedition
-  const handleCreateGroup = (e) => {
+  useEffect(() => {
+    if (selectedGroupId) {
+      loadGroupDetails(selectedGroupId);
+    } else {
+      setGroupDetails(null);
+    }
+  }, [selectedGroupId, currentUserId]);
+
+  // 3. Load Chat Messages for Linked Group Chat
+  const loadChatMessages = async (conversationId) => {
+    if (!conversationId) return;
+    try {
+      setLoadingChat(true);
+      const res = await fetch(`http://localhost:5000/api/chats/${conversationId}/messages?userId=${currentUserId || ""}`);
+      const data = await res.json();
+      if (data && data.success) {
+        setChatMessages(data.messages || []);
+      }
+    } catch (err) {
+      console.error("Error loading group chat:", err);
+    } finally {
+      setLoadingChat(false);
+    }
+  };
+
+  // 4. Real-time Socket.io Chat Integration
+  useEffect(() => {
+    if (!groupDetails?.conversationId) return;
+
+    const convId = groupDetails.conversationId;
+    socketService.connect(currentUser);
+    socketService.joinChat(convId, currentUserId);
+
+    const unsubscribe = socketService.onReceiveMessage((msg) => {
+      if (msg && (msg.conversationId === convId || msg.conversation_id === convId)) {
+        setChatMessages(prev => {
+          if (prev.some(m => m.id === msg.id || m.id === msg.message_id)) return prev;
+          return [...prev, msg];
+        });
+      }
+    });
+
+    return () => {
+      socketService.leaveChat(convId, currentUserId);
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, [groupDetails?.conversationId, currentUserId, currentUser]);
+
+  // Scroll chat to bottom
+  useEffect(() => {
+    if (activeTab === "chat" && chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages, activeTab]);
+
+  // Determine My Expeditions vs Explore Expeditions
+  const myExpeditions = groups.filter(g => g.isOrganizer || g.isMember);
+  const exploreExpeditions = groups.filter(g => !g.isOrganizer && !g.isMember);
+
+  // 5. Create Group Action
+  const handleCreateGroup = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    const userObj = currentUser || { name: "You", username: "you", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=you" };
-
-    const newGroup = {
-      id: "group_" + Date.now(),
-      title: title.trim(),
-      destination: destination,
-      travelDate: travelDate,
-      estimatedBudget: Number(budget),
-      maxMembers: Number(maxMembers),
-      transportation: transport,
-      accommodationPlan: accommodation,
-      organizer: userObj,
-      members: [userObj],
-      requests: [],
-      itinerary: [
-        { day: "Day 1", plan: "Depart and check into accommodation. Evening group dinner." },
-        { day: "Day 2", plan: "Sightseeing, photography, and local adventure trails." },
-        { day: "Day 3", plan: "Return journey back home." }
-      ],
-      checklist: [
-        { id: "chk_" + Date.now(), task: "Book transport tickets", completed: false, assignedTo: userObj.name }
-      ],
-      expenses: [],
-      messages: []
+    const userObj = currentUser || {
+      id: "user_demo",
+      name: "Travel Explorer",
+      username: "traveler",
+      avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=traveler"
     };
 
-    const updated = [newGroup, ...groups];
-    setGroups(updated);
-    setSelectedGroupId(newGroup.id);
-    setIsModalOpen(false);
-    
-    addPoints(75);
-    confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
-  };
+    try {
+      setCreatingGroup(true);
+      const res = await api.createGroupExpedition({
+        title: title.trim(),
+        destination,
+        travelDate,
+        estimatedBudget: Number(budget),
+        maxMembers: Number(maxMembers),
+        transportation: transport,
+        accommodationPlan: accommodation,
+        organizer: userObj
+      });
 
-  // Join Request Action
-  const handleJoinRequest = (groupId) => {
-    setGroups(prev => prev.map(g => {
-      if (g.id === groupId) {
-        const alreadyRequested = g.requests?.some(r => r.user?.id === currentUser?.id || r.user?.username === currentUser?.username);
-        if (alreadyRequested) return g;
-        return {
-          ...g,
-          requests: [
-            ...(g.requests || []),
-            { id: "req_" + Date.now(), user: currentUser, status: "pending" }
-          ]
-        };
+      if (res && res.success) {
+        setIsModalOpen(false);
+        setTitle("");
+        addPoints(75);
+        confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+        await loadGroups();
+        if (res.groupId) {
+          setSelectedGroupId(res.groupId);
+        }
       }
-      return g;
-    }));
-    alert("✉️ Join request sent to the expedition organizer!");
+    } catch (err) {
+      console.error("Failed to create expedition:", err);
+      alert("Could not create expedition. " + (err.message || ""));
+    } finally {
+      setCreatingGroup(false);
+    }
   };
 
-  // Organizer accepts user
-  const handleAcceptUser = (groupId, requestId) => {
-    setGroups(prev => prev.map(g => {
-      if (g.id === groupId) {
-        const req = g.requests?.find(r => r.id === requestId);
-        if (!req) return g;
-        
-        return {
-          ...g,
-          members: [...g.members, req.user],
-          requests: g.requests.filter(r => r.id !== requestId)
-        };
+  // 6. Join Request Action
+  const handleJoinRequest = async (groupId) => {
+    const userObj = currentUser || {
+      id: "user_guest_" + Date.now(),
+      name: "Community Traveler",
+      username: "traveler",
+      avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=traveler"
+    };
+
+    try {
+      const res = await api.joinGroupExpedition(groupId, userObj);
+      if (res && res.success) {
+        alert("✉️ Join request sent to the expedition organizer!");
+        loadGroups();
+        if (selectedGroupId === groupId) loadGroupDetails(groupId);
+        if (detailModalGroup?.id === groupId) setDetailModalGroup(null);
       }
-      return g;
-    }));
+    } catch (err) {
+      alert(err.message || "Failed to send join request.");
+    }
   };
 
-  // Organizer rejects user
-  const handleRejectUser = (groupId, requestId) => {
-    setGroups(prev => prev.map(g => {
-      if (g.id === groupId) {
-        return {
-          ...g,
-          requests: g.requests.filter(r => r.id !== requestId)
-        };
+  // 7. Withdraw Join Request Action
+  const handleWithdrawRequest = async (groupId) => {
+    if (!confirm("Are you sure you want to withdraw your join request?")) return;
+    try {
+      const res = await api.withdrawJoinRequest(groupId, currentUserId);
+      if (res && res.success) {
+        loadGroups();
+        if (selectedGroupId === groupId) loadGroupDetails(groupId);
+        if (detailModalGroup?.id === groupId) setDetailModalGroup(null);
       }
-      return g;
-    }));
+    } catch (err) {
+      console.error("Failed to withdraw request:", err);
+      alert("Could not withdraw request. " + (err.message || ""));
+    }
   };
 
-  // Collaborative Checklist Action
-  const toggleChecklist = (taskId) => {
-    if (!selectedGroupId) return;
-    setGroups(prev => prev.map(g => {
-      if (g.id === selectedGroupId) {
-        return {
-          ...g,
-          checklist: g.checklist.map(task => 
-            task.id === taskId ? { ...task, completed: !task.completed } : task
-          )
-        };
+  // 8. Organizer Accept / Reject Join Request
+  const handleRespondRequest = async (groupId, targetUserId, status) => {
+    try {
+      const res = await api.respondToJoinRequest(groupId, targetUserId, status, currentUserId);
+      if (res && res.success) {
+        loadGroups();
+        loadGroupDetails(groupId);
+        if (detailModalGroup?.id === groupId) {
+          const updated = await api.fetchGroupDetails(groupId, currentUserId);
+          setDetailModalGroup(updated);
+        }
       }
-      return g;
-    }));
-    addPoints(5);
+    } catch (err) {
+      console.error("Failed to update join request:", err);
+    }
   };
 
-  const handleAddTask = (e) => {
+  // 9. Collaborative Add Checklist Task (Any member can add)
+  const handleAddTask = async (e) => {
     e.preventDefault();
     if (!newTaskText.trim() || !selectedGroupId) return;
 
-    setGroups(prev => prev.map(g => {
-      if (g.id === selectedGroupId) {
-        return {
-          ...g,
-          checklist: [
-            ...g.checklist,
-            {
-              id: "task_" + Date.now(),
-              task: newTaskText.trim(),
-              completed: false,
-              assignedTo: newTaskAssignee || currentUser?.name || "You"
-            }
-          ]
-        };
+    let assigneeName = "";
+    let assigneeUserId = null;
+
+    if (selectedAssigneeUserId === "me") {
+      assigneeName = currentUser?.name || currentUser?.username || "Me";
+      assigneeUserId = currentUserId;
+    } else if (selectedAssigneeUserId === "custom") {
+      assigneeName = customAssigneeName.trim() || "Traveler";
+      assigneeUserId = null;
+    } else {
+      const allMembers = [
+        ...(groupDetails?.members || []),
+        ...(groupDetails?.organizer ? [groupDetails.organizer] : [])
+      ];
+      const targetUser = allMembers.find(m => (m.id === selectedAssigneeUserId || m.user_id === selectedAssigneeUserId));
+      if (targetUser) {
+        assigneeName = targetUser.name || targetUser.username;
+        assigneeUserId = targetUser.id || targetUser.user_id;
+      } else {
+        assigneeName = currentUser?.name || "Traveler";
+        assigneeUserId = currentUserId;
       }
-      return g;
-    }));
-    setNewTaskText("");
-    addPoints(10);
+    }
+
+    try {
+      setAddingTask(true);
+      const res = await api.addGroupChecklistTask(selectedGroupId, {
+        task: newTaskText.trim(),
+        assignedToName: assigneeName,
+        assignedToUserId: assigneeUserId
+      });
+      if (res && res.success) {
+        setNewTaskText("");
+        setCustomAssigneeName("");
+        addPoints(10);
+        loadGroupDetails(selectedGroupId);
+      }
+    } catch (err) {
+      console.error("Failed to add task:", err);
+    } finally {
+      setAddingTask(false);
+    }
   };
 
-  // Expense Splitting
-  const handleAddExpense = (e) => {
+  // 10. Toggle Task Completed
+  const handleToggleTask = async (taskId, currentCompleted) => {
+    try {
+      const willBeCompleted = !currentCompleted;
+      setGroupDetails(prev => {
+        if (!prev) return prev;
+        const updatedList = prev.checklist.map(c => c.id === taskId ? { ...c, completed: willBeCompleted } : c);
+        const allDone = updatedList.length > 0 && updatedList.every(c => c.completed);
+        if (allDone && willBeCompleted) {
+          confetti({ particleCount: 80, spread: 60, origin: { y: 0.7 } });
+        }
+        return {
+          ...prev,
+          checklist: updatedList
+        };
+      });
+
+      if (willBeCompleted) {
+        addPoints(5);
+      }
+
+      await api.toggleGroupChecklistTask(selectedGroupId, taskId, willBeCompleted);
+    } catch (err) {
+      console.error("Failed to toggle task:", err);
+      loadGroupDetails(selectedGroupId);
+    }
+  };
+
+  // 11. Delete Task
+  const handleDeleteTask = async (taskId) => {
+    try {
+      setGroupDetails(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          checklist: prev.checklist.filter(c => c.id !== taskId)
+        };
+      });
+      await api.deleteGroupChecklistTask(selectedGroupId, taskId);
+    } catch (err) {
+      console.error("Failed to delete task:", err);
+    }
+  };
+
+  // 12. Add Shared Expense
+  const handleAddExpense = async (e) => {
     e.preventDefault();
     if (!newExpTitle.trim() || !newExpAmount || !selectedGroupId) return;
 
-    setGroups(prev => prev.map(g => {
-      if (g.id === selectedGroupId) {
-        return {
-          ...g,
-          expenses: [
-            ...g.expenses,
-            {
-              id: "exp_" + Date.now(),
-              title: newExpTitle.trim(),
-              amount: Number(newExpAmount),
-              paidBy: newExpPaidBy || currentUser?.name || "You",
-              date: new Date().toISOString().split("T")[0]
-            }
-          ]
-        };
-      }
-      return g;
-    }));
+    try {
+      setAddingExpense(true);
+      const res = await api.addGroupExpense(selectedGroupId, {
+        title: newExpTitle.trim(),
+        amount: parseFloat(newExpAmount),
+        paidBy: newExpPaidBy.trim() || (currentUser?.name || "Member"),
+        paidByUserId: currentUserId,
+        date: new Date().toISOString().split("T")[0]
+      });
 
-    setNewExpTitle("");
-    setNewExpAmount("");
-    addPoints(15);
+      if (res && res.success) {
+        setNewExpTitle("");
+        setNewExpAmount("");
+        setNewExpPaidBy("");
+        loadGroupDetails(selectedGroupId);
+      }
+    } catch (err) {
+      console.error("Failed to add expense:", err);
+    } finally {
+      setAddingExpense(false);
+    }
   };
 
-  // Collaborative Chat Message
-  const handleSendGroupMessage = (e) => {
+  // 13. Delete Expense
+  const handleDeleteExpense = async (expenseId) => {
+    try {
+      setGroupDetails(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          expenses: prev.expenses.filter(e => e.id !== expenseId)
+        };
+      });
+      await api.deleteGroupExpense(selectedGroupId, expenseId);
+    } catch (err) {
+      console.error("Failed to delete expense:", err);
+    }
+  };
+
+  // 14. Send Group Chat Message
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newChatMessage.trim() || !selectedGroupId) return;
+    if (!newChatMessage.trim() || !groupDetails?.conversationId) return;
 
-    setGroups(prev => prev.map(g => {
-      if (g.id === selectedGroupId) {
-        return {
-          ...g,
-          messages: [
-            ...g.messages,
-            {
-              id: "gmsg_" + Date.now(),
-              sender: currentUser || { name: "You", username: "you", avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=you" },
-              text: newChatMessage.trim(),
-              time: "Just now"
-            }
-          ]
-        };
-      }
-      return g;
-    }));
-
+    const convId = groupDetails.conversationId;
+    const textToSend = newChatMessage.trim();
     setNewChatMessage("");
-    addPoints(2);
+
+    try {
+      setSendingMessage(true);
+      const userObj = currentUser || {
+        id: "user_demo",
+        name: "Traveler",
+        username: "traveler",
+        avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=traveler"
+      };
+
+      const res = await fetch(`http://localhost:5000/api/chats/${convId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderId: currentUserId || userObj.id,
+          senderData: userObj,
+          text: textToSend,
+          type: "text"
+        })
+      });
+
+      const data = await res.json();
+      if (data && data.success && data.message) {
+        setChatMessages(prev => {
+          if (prev.some(m => m.id === data.message.id)) return prev;
+          return [...prev, data.message];
+        });
+      }
+    } catch (err) {
+      console.error("Failed to send chat message:", err);
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
-  // Calculated totals for active workspace
-  const totalSpent = selectedGroup?.expenses?.reduce((sum, exp) => sum + exp.amount, 0) || 0;
-  const perMemberShare = selectedGroup?.members?.length > 0 ? Math.round(totalSpent / selectedGroup.members.length) : 0;
+  // 15. Propose Itinerary Suggestion / Appeal (Member action)
+  const handleProposeItinerary = async (e) => {
+    e.preventDefault();
+    if (!appealActivity.trim() || !selectedGroupId) return;
+
+    const userObj = currentUser || {
+      id: "user_demo",
+      name: "Traveler",
+      username: "traveler",
+      avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=traveler"
+    };
+
+    const targetDay = appealDay === "custom" ? (customAppealDay.trim() || "Day 1") : appealDay;
+
+    try {
+      setSubmittingAppeal(true);
+      const res = await api.addItinerarySuggestion(selectedGroupId, {
+        day: targetDay,
+        activityPlan: appealActivity.trim(),
+        reason: appealReason.trim(),
+        user: userObj
+      });
+
+      if (res && res.success) {
+        setIsAppealModalOpen(false);
+        setAppealActivity("");
+        setAppealReason("");
+        setCustomAppealDay("");
+        addPoints(15);
+        confetti({ particleCount: 90, spread: 60, origin: { y: 0.65 } });
+        loadGroupDetails(selectedGroupId);
+      }
+    } catch (err) {
+      console.error("Failed to submit itinerary proposal:", err);
+      alert(err.message || "Failed to submit itinerary proposal.");
+    } finally {
+      setSubmittingAppeal(false);
+    }
+  };
+
+  // 16. Organizer Accept Itinerary Suggestion
+  const handleAcceptSuggestion = async (suggestionId) => {
+    try {
+      const res = await api.respondToItinerarySuggestion(selectedGroupId, suggestionId, "accepted", "", currentUserId);
+      if (res && res.success) {
+        confetti({ particleCount: 110, spread: 70, origin: { y: 0.6 } });
+        loadGroupDetails(selectedGroupId);
+      }
+    } catch (err) {
+      console.error("Failed to accept suggestion:", err);
+      alert(err.message || "Failed to accept suggestion.");
+    }
+  };
+
+  // 17. Organizer Reject Itinerary Suggestion with Reason
+  const handleRejectSuggestionSubmit = async (e) => {
+    e.preventDefault();
+    if (!rejectingSuggestion || !selectedGroupId) return;
+
+    try {
+      setSubmittingRejection(true);
+      const res = await api.respondToItinerarySuggestion(
+        selectedGroupId, 
+        rejectingSuggestion.id, 
+        "rejected", 
+        rejectionReasonText.trim() || "Declined by trip organizer.", 
+        currentUserId
+      );
+      if (res && res.success) {
+        setRejectingSuggestion(null);
+        setRejectionReasonText("");
+        loadGroupDetails(selectedGroupId);
+      }
+    } catch (err) {
+      console.error("Failed to reject suggestion:", err);
+      alert(err.message || "Failed to reject suggestion.");
+    } finally {
+      setSubmittingRejection(false);
+    }
+  };
+
+  // 18. Delete / Withdraw Itinerary Suggestion
+  const handleDeleteSuggestion = async (suggestionId) => {
+    if (!confirm("Are you sure you want to withdraw this itinerary proposal?")) return;
+    try {
+      const res = await api.deleteItinerarySuggestion(selectedGroupId, suggestionId);
+      if (res && res.success) {
+        loadGroupDetails(selectedGroupId);
+      }
+    } catch (err) {
+      console.error("Failed to delete suggestion:", err);
+    }
+  };
+
+  // Total Expenses & Per-Person calculations
+  const totalExpCost = (groupDetails?.expenses || []).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const acceptedMembersCount = Math.max(1, groupDetails?.members?.length || 1);
+  const perPersonCost = Math.round(totalExpCost / acceptedMembersCount);
+
+  // Pending Appeals for Creator
+  const pendingSuggestions = (groupDetails?.itinerarySuggestions || []).filter(s => s.status === "pending");
+  const acceptedSuggestions = (groupDetails?.itinerarySuggestions || []).filter(s => s.status === "accepted");
+  const rejectedSuggestions = (groupDetails?.itinerarySuggestions || []).filter(s => s.status === "rejected");
+
+  // All expedition members for assignee dropdown
+  const expeditionTeamMembers = [
+    ...(groupDetails?.organizer ? [{ ...groupDetails.organizer, isOrganizer: true }] : []),
+    ...(groupDetails?.members || []).filter(m => m.id !== groupDetails?.organizer?.id)
+  ];
 
   return (
-    <div className="container max-w-6xl px-4 py-6 mx-auto space-y-8 md:px-8">
-      
-      {/* Top Header */}
-      <div className="flex flex-col gap-4 p-6 border shadow-sm md:flex-row md:justify-between md:items-center bg-base-100 border-base-200 rounded-3xl">
-        <div>
-          <h1 className="flex items-center gap-2 mb-1 text-3xl font-black tracking-tight text-base-content">
-            <Users className="w-8 h-8 text-primary" /> Group Expeditions
-          </h1>
-          <p className="text-xs sm:text-sm text-base-content/70">
-            Browse available travel groups or manage your joined expedition workspace.
-          </p>
-        </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="self-start gap-2 px-5 font-bold text-white capitalize border-none shadow-lg btn btn-primary rounded-2xl shrink-0 md:self-auto"
-        >
-          <Plus className="w-5 h-5" /> Plan Expedition
-        </button>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* VIEW 1: OVERVIEW PAGE (When no expedition is selected: selectedGroupId === null) */}
-      {/* ========================================================================= */}
-      {selectedGroupId === null ? (
-        <div className="space-y-10">
-          
-          {/* SECTION A: MY EXPEDITIONS (Expeditions the user belongs to) */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-base-200">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-black text-base-content">
-                  <ShieldCheck className="w-5 h-5 text-success" /> My Expeditions
-                </h2>
-                <p className="text-xs text-base-content/60">Expeditions you are organizing or currently participating in.</p>
-              </div>
-              <span className="px-3 py-1 text-xs font-bold text-white badge badge-success">
-                {myExpeditions.length} Joined / Organized
-              </span>
-            </div>
-
-            {myExpeditions.length === 0 ? (
-              <div className="p-6 py-10 space-y-2 text-center border border-dashed bg-base-100 rounded-3xl border-base-300">
-                <Compass className="w-10 h-10 mx-auto opacity-50 text-primary" />
-                <h3 className="text-sm font-bold text-base-content">You haven't joined any expedition yet</h3>
-                <p className="max-w-sm mx-auto text-xs text-base-content/60">
-                  Browse available expeditions below and send a join request, or create your own group expedition!
+    <div className="min-h-screen bg-base-100/50 pb-20">
+      <div className="container mx-auto px-4 md:px-8 py-8 max-w-6xl space-y-8">
+        
+        {/* ========================================================================= */}
+        {/* VIEW 1: EXPEDITIONS LIST & DISCOVERY */}
+        {/* ========================================================================= */}
+        {!selectedGroupId && (
+          <div className="space-y-8">
+            
+            {/* Header Banner */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-base-100 via-base-200/50 to-base-100 p-6 md:p-8 rounded-3xl border border-base-200 shadow-xs">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider">
+                  <Compass className="w-4 h-4" /> Cooperative Travel Hub
+                </div>
+                <h1 className="text-3xl md:text-4xl font-black text-base-content m-0">
+                  Group Expeditions
+                </h1>
+                <p className="text-sm text-base-content/70 m-0 max-w-xl">
+                  Browse available travel groups or manage your joined expedition workspace with checklists, split budgets, live group chat, and collaborative itinerary proposals.
                 </p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-                {myExpeditions.map(group => {
-                  const isOrganizer = group.organizer?.id === currentUser?.id || 
-                                      group.organizer?.username === currentUser?.username || 
-                                      group.organizer?.name === currentUser?.name;
 
-                  return (
-                    <div 
-                      key={group.id} 
-                      className="flex flex-col justify-between p-5 space-y-4 transition-all border-2 shadow-sm card bg-base-100 border-primary/40 rounded-3xl hover:shadow-md"
-                    >
-                      <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="text-base font-black leading-snug text-base-content">{group.title}</h3>
-                          {isOrganizer ? (
-                            <span className="badge badge-warning font-bold text-[10px] text-slate-900 shrink-0 gap-1 shadow-sm">
-                              Organizer 👑
-                            </span>
-                          ) : (
-                            <span className="badge badge-success text-white font-bold text-[10px] shrink-0 gap-1 shadow-sm">
-                              Joined 🤝
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Visual Tag for Member Status */}
-                        <div className="flex items-center gap-2 p-2 border bg-primary/10 border-primary/20 rounded-2xl">
-                          <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                          <span className="text-[11px] font-bold text-primary">
-                            {isOrganizer ? "You are organizing this expedition" : "You are an active member of this group"}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1.5 text-xs text-base-content/80 pt-1">
-                          <div className="flex items-center gap-1.5 font-semibold">
-                            <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                            <span>{group.destination}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5 text-info shrink-0" />
-                            <span>{group.travelDate}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-3 border-t border-base-200">
-                        <div className="flex items-center gap-1 text-xs font-bold text-base-content/70">
-                          <Users className="w-3.5 h-3.5 text-primary" />
-                          <span>{group.members?.length || 1} / {group.maxMembers} Members</span>
-                        </div>
-
-                        <button 
-                          onClick={() => setSelectedGroupId(group.id)}
-                          className="gap-1 font-bold text-white shadow btn btn-sm btn-primary rounded-xl"
-                        >
-                          Open Workspace <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* SECTION B: EXPLORE EXPEDITIONS (Expeditions the user is NOT part of) */}
-          <div className="pt-4 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-base-200">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-black text-base-content">
-                  <Compass className="w-5 h-5 text-primary" /> Explore Available Expeditions
-                </h2>
-                <p className="text-xs text-base-content/60">Discover open group trips created by other travelers and request to join.</p>
-              </div>
-              <span className="px-3 py-1 text-xs font-bold badge badge-outline">
-                {exploreExpeditions.length} Available
-              </span>
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="btn btn-primary font-black rounded-2xl shadow gap-2 text-sm px-6"
+              >
+                <Plus className="w-5 h-5" /> Plan Expedition
+              </button>
             </div>
 
-            {exploreExpeditions.length === 0 ? (
-              <div className="p-6 py-10 text-center border border-dashed bg-base-100 rounded-3xl border-base-300">
-                <p className="text-xs text-base-content/60">No additional open expeditions available to join right now.</p>
+            {/* Error Banner */}
+            {errorMsg && (
+              <div className="alert alert-error shadow-sm text-xs rounded-2xl flex items-center justify-between">
+                <span>{errorMsg}</span>
+                <button onClick={loadGroups} className="btn btn-xs btn-ghost gap-1">
+                  <RefreshCw className="w-3 h-3" /> Retry
+                </button>
+              </div>
+            )}
+
+            {/* 1. MY EXPEDITIONS SECTION */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-500" />
+                  <h2 className="text-xl font-black text-base-content m-0">My Expeditions</h2>
+                </div>
+                <span className="badge badge-neutral font-bold text-xs">
+                  {myExpeditions.length} Joined / Organized
+                </span>
+              </div>
+
+              {loadingGroups ? (
+                <div className="text-center py-12">
+                  <span className="loading loading-spinner loading-md text-primary"></span>
+                  <span className="block text-xs text-base-content/50 mt-2">Loading your expeditions...</span>
+                </div>
+              ) : myExpeditions.length === 0 ? (
+                <div className="card bg-base-100 border border-dashed border-base-300 p-8 text-center text-xs text-base-content/50 rounded-3xl space-y-2">
+                  <Users className="w-8 h-8 mx-auto text-base-content/30" />
+                  <p className="font-bold text-sm text-base-content">No active expeditions yet.</p>
+                  <p>Create a new trip or request to join one of the available expeditions below!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  {myExpeditions.map(group => {
+                    const hasPendingRequests = group.isOrganizer && group.requests && group.requests.length > 0;
+
+                    return (
+                      <div 
+                        key={group.id}
+                        className={`card bg-base-100 border p-5 rounded-3xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4 ${
+                          hasPendingRequests ? "border-amber-500/40 ring-1 ring-amber-500/20" : "border-base-200"
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="font-black text-base text-base-content m-0 line-clamp-1 flex-1">
+                              {group.title}
+                            </h3>
+                            {group.isOrganizer ? (
+                              <span className="badge badge-warning badge-sm font-black text-[10px] shrink-0 gap-1">
+                                <Crown className="w-3 h-3" /> Organizer
+                              </span>
+                            ) : (
+                              <span className="badge badge-success text-white badge-sm font-black text-[10px] shrink-0">
+                                Joined
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Organizer Notification Banner on Card */}
+                          {hasPendingRequests && (
+                            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-500 px-3 py-1.5 rounded-xl flex items-center justify-between text-xs">
+                              <span className="font-bold flex items-center gap-1.5">
+                                <Bell className="w-3.5 h-3.5 animate-bounce" /> {group.requests.length} Pending Request{group.requests.length > 1 ? "s" : ""}
+                              </span>
+                              <button 
+                                onClick={() => setSelectedGroupId(group.id)}
+                                className="btn btn-xs btn-warning text-slate-900 font-black rounded-lg h-6 min-h-0 text-[10px]"
+                              >
+                                Review
+                              </button>
+                            </div>
+                          )}
+
+                          <div className="space-y-1.5 text-xs text-base-content/70">
+                            <div className="flex items-center gap-2">
+                              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                              <span className="font-semibold text-base-content">{group.destination}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-3.5 h-3.5 text-secondary shrink-0" />
+                              <span>{formatDate(group.travelDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Users className="w-3.5 h-3.5 text-accent shrink-0" />
+                              <span>{group.memberCount || 1} / {group.maxMembers} Members</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-base-200 flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] text-base-content/50 block font-bold uppercase">Budget</span>
+                            <span className="font-black text-sm text-primary">
+                              {Number(group.estimatedBudget).toLocaleString()} BDT
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              onClick={() => setDetailModalGroup(group)}
+                              className="btn btn-ghost btn-xs rounded-xl text-base-content/70 hover:text-base-content gap-1 font-bold"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Details
+                            </button>
+
+                            <button 
+                              onClick={() => setSelectedGroupId(group.id)}
+                              className="btn btn-primary btn-sm rounded-xl font-bold gap-1 text-xs shadow-xs"
+                            >
+                              Workspace <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 2. EXPLORE AVAILABLE EXPEDITIONS SECTION */}
+            <div className="space-y-4 pt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Compass className="w-5 h-5 text-primary" />
+                  <h2 className="text-xl font-black text-base-content m-0">Explore Open Expeditions</h2>
+                </div>
+                <span className="text-xs text-base-content/60">
+                  Find new companions and request to join their trips.
+                </span>
+              </div>
+
+              {exploreExpeditions.length === 0 ? (
+                <div className="card bg-base-100 border border-base-200 p-8 text-center text-xs text-base-content/50 rounded-3xl">
+                  No open expeditions available right now. Click "Plan Expedition" above to launch the first one!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  {exploreExpeditions.map(group => {
+                    const isPending = group.isPending || (group.requests && group.requests.some(r => r.user?.id === currentUserId));
+
+                    return (
+                      <div 
+                        key={group.id}
+                        className="card bg-base-100 border border-base-200 p-5 rounded-3xl shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="font-black text-base text-base-content m-0 line-clamp-1 flex-1">
+                              {group.title}
+                            </h3>
+                            <span className="badge badge-outline badge-sm text-[10px] font-bold shrink-0">
+                              {group.status || "open"}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5 text-xs text-base-content/70">
+                            <div className="flex items-center gap-2">
+                              <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
+                              <span className="font-semibold text-base-content">{group.destination}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-3.5 h-3.5 text-secondary shrink-0" />
+                              <span>{formatDate(group.travelDate)}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Users className="w-3.5 h-3.5 text-accent shrink-0" />
+                              <span>{group.memberCount || 1} / {group.maxMembers} Members</span>
+                            </div>
+                          </div>
+
+                          {/* Organizer info badge */}
+                          <div className="flex items-center gap-2 pt-2 border-t border-base-200/60">
+                            <img 
+                              src={group.organizer?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${group.organizer?.name || 'traveler'}`} 
+                              className="w-5 h-5 rounded-full object-cover" 
+                              alt="Organizer" 
+                            />
+                            <span className="text-[11px] text-base-content/60 truncate">
+                              Organized by <span className="font-bold text-base-content">{group.organizer?.name || "Traveler"}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t border-base-200 flex items-center justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] text-base-content/50 block font-bold uppercase">Budget</span>
+                            <span className="font-black text-sm text-primary">
+                              {Number(group.estimatedBudget).toLocaleString()} BDT
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button 
+                              onClick={() => setDetailModalGroup(group)}
+                              className="btn btn-ghost btn-xs rounded-xl text-base-content/70 hover:text-base-content gap-1 font-bold"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Details
+                            </button>
+
+                            {isPending ? (
+                              <div className="flex items-center gap-1">
+                                <span className="px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 font-bold text-[11px] whitespace-nowrap">
+                                  Pending
+                                </span>
+                                <button 
+                                  onClick={() => handleWithdrawRequest(group.id)}
+                                  className="btn btn-xs btn-ghost text-error rounded-xl font-bold text-[10px] px-2 h-7 min-h-0"
+                                  title="Withdraw Join Request"
+                                >
+                                  Withdraw
+                                </button>
+                              </div>
+                            ) : (
+                              <button 
+                                onClick={() => handleJoinRequest(group.id)}
+                                className="btn btn-primary btn-sm rounded-xl font-bold gap-1 text-xs shadow-xs"
+                              >
+                                Join <UserPlus className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* VIEW 2: DEDICATED EXPEDITION WORKSPACE */}
+        {/* ========================================================================= */}
+        {selectedGroupId && (
+          <div className="space-y-6">
+            
+            {/* Top Workspace Bar */}
+            <div className="flex items-center justify-between">
+              <button 
+                onClick={() => setSelectedGroupId(null)}
+                className="btn btn-ghost btn-sm rounded-xl gap-2 font-bold text-xs"
+              >
+                <ArrowLeft className="w-4 h-4" /> Back to Expeditions
+              </button>
+
+              <button 
+                onClick={() => loadGroupDetails(selectedGroupId)}
+                className="btn btn-ghost btn-xs rounded-xl gap-1 text-base-content/60"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Sync Data
+              </button>
+            </div>
+
+            {loadingDetails || !groupDetails ? (
+              <div className="text-center py-20 card bg-base-100 border border-base-200 rounded-3xl">
+                <span className="loading loading-spinner loading-lg text-primary"></span>
+                <p className="text-xs text-base-content/50 mt-3 font-semibold">Loading expedition workspace...</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-                {exploreExpeditions.map(group => {
-                  const hasRequested = group.requests?.some(r => r.user?.id === currentUser?.id || r.user?.username === currentUser?.username);
-                  const isFull = (group.members?.length || 0) >= group.maxMembers;
+              <div className="space-y-6">
 
-                  return (
-                    <div 
-                      key={group.id} 
-                      className="flex flex-col justify-between p-5 space-y-4 transition-all border shadow-sm card bg-base-100 border-base-200 rounded-3xl hover:border-primary/50"
-                    >
-                      {/* Title & Geotag */}
-                      <div className="space-y-2">
-                        <h3 className="text-base font-black leading-snug text-base-content">{group.title}</h3>
-                        
-                        {/* Organizer Profile Card */}
-                        <div className="flex items-center gap-2 p-2 border bg-base-200/60 rounded-2xl border-base-200">
-                          <img 
-                            src={group.organizer?.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=organizer"} 
-                            alt={group.organizer?.name} 
-                            className="object-cover w-8 h-8 border rounded-full border-base-300"
-                          />
-                          <div className="min-w-0">
-                            <span className="block text-xs font-bold truncate text-base-content">{group.organizer?.name}</span>
-                            <span className="text-[10px] text-base-content/50 block font-mono">Creator • @{group.organizer?.username || "traveler"}</span>
-                          </div>
-                        </div>
-
-                        {/* Details */}
-                        <div className="pt-1 space-y-1 text-xs text-base-content/75">
-                          <div className="flex items-center gap-1.5 font-medium">
-                            <MapPin className="w-3.5 h-3.5 text-primary shrink-0" />
-                            <span>{group.destination}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5 text-info shrink-0" />
-                            <span>{group.travelDate}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 font-bold text-primary">
-                            <DollarSign className="w-3.5 h-3.5 shrink-0" />
-                            <span>Estimated Budget: {group.estimatedBudget} BDT / head</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Member Capacity Progress */}
-                      <div className="pt-2 space-y-1 border-t border-base-200">
-                        <div className="flex justify-between items-center text-[11px] font-bold text-base-content/75">
-                          <span>Members Capacity</span>
-                          <span>{group.members?.length || 1} / {group.maxMembers} Joined</span>
-                        </div>
-                        <div className="w-full h-2 overflow-hidden rounded-full bg-base-200">
-                          <div 
-                            className="h-full transition-all bg-primary" 
-                            style={{ width: `${((group.members?.length || 1) / group.maxMembers) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex gap-2 pt-1">
-                        <button 
-                          onClick={() => setSelectedGroupId(group.id)}
-                          className="flex-1 text-xs font-bold btn btn-sm btn-outline rounded-xl"
-                        >
-                          View Details
-                        </button>
-
-                        {hasRequested ? (
-                          <span className="btn btn-sm btn-neutral text-white font-bold rounded-xl text-[10px] px-3 shrink-0">
-                            Requested ⌛
+                {/* Expedition Hero Card */}
+                <div className="card bg-base-100 border border-base-200 p-6 md:p-8 rounded-3xl shadow-xs space-y-6">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="badge badge-primary badge-sm font-black text-[10px]">
+                          EXPEDITION WORKSPACE
+                        </span>
+                        {groupDetails.isOrganizer && (
+                          <span className="badge badge-warning badge-sm font-bold text-[10px] gap-1">
+                            <Crown className="w-3 h-3" /> Trip Organizer
                           </span>
-                        ) : isFull ? (
-                          <span className="btn btn-sm btn-disabled font-bold rounded-xl text-[10px] px-3 shrink-0">
-                            Expedition Full
-                          </span>
-                        ) : (
-                          <button 
-                            onClick={() => handleJoinRequest(group.id)}
-                            className="px-3 text-xs font-bold text-white shadow btn btn-sm btn-primary rounded-xl shrink-0"
-                          >
-                            Request Join
-                          </button>
                         )}
                       </div>
 
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                      <h2 className="text-2xl md:text-3xl font-black text-base-content m-0">
+                        {groupDetails.title}
+                      </h2>
 
-        </div>
-      ) : (
-        /* ========================================================================= */
-        /* VIEW 2: SELECTED EXPEDITION DETAILS / WORKSPACE */
-        /* ========================================================================= */
-        <div className="space-y-6">
-          
-          {/* Back Navigation Header */}
-          <div className="flex items-center justify-between">
-            <button 
-              onClick={() => setSelectedGroupId(null)}
-              className="gap-2 text-xs font-bold btn btn-ghost btn-sm rounded-xl"
-            >
-              <ArrowLeft className="w-4 h-4" /> Back to All Expeditions
-            </button>
-            <span className={`badge font-bold text-xs px-3 py-1 ${isSelectedGroupMember ? "badge-success text-white" : "badge-outline"}`}>
-              {isSelectedGroupMember ? "Your Active Workspace" : "Expedition Preview Details"}
-            </span>
-          </div>
-
-          {/* IF USER IS A MEMBER: SHOW FULL WORKSPACE CONSOLE */}
-          {isSelectedGroupMember ? (
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              
-              {/* Left / Center: Active Workspace Console (Takes 2 Cols) */}
-              <div className="flex flex-col gap-6 lg:col-span-2">
-                
-                {/* Active Group Header */}
-                <div className="p-5 space-y-4 border shadow-sm card bg-base-100 border-base-200 md:p-6 rounded-3xl">
-                  <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Active Expedition Workspace</span>
-                      <h2 className="text-2xl font-black text-base-content mt-0.5 mb-1">{selectedGroup.title}</h2>
-                      <p className="flex items-center gap-2 text-xs text-base-content/70">
-                        <MapPin className="w-3.5 h-3.5 text-primary" /> {selectedGroup.destination} &nbsp;•&nbsp; 
-                        <Calendar className="w-3.5 h-3.5 text-info" /> {selectedGroup.travelDate}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-2 border bg-base-200 rounded-2xl border-base-300">
-                      <Users className="w-4 h-4 text-primary" />
-                      <div className="leading-none text-left">
-                        <span className="text-[10px] text-base-content/60 block">Members</span>
-                        <span className="text-xs font-bold">{selectedGroup.members?.length || 1} / {selectedGroup.maxMembers}</span>
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-base-content/70 pt-1">
+                        <span className="flex items-center gap-1 font-semibold text-base-content">
+                          <MapPin className="w-4 h-4 text-primary" /> {groupDetails.destination}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4 text-secondary" /> {formatDate(groupDetails.travelDate)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Bus className="w-4 h-4 text-accent" /> {groupDetails.transportation}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Home className="w-4 h-4 text-emerald-500" /> {groupDetails.accommodationPlan}
+                        </span>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Summary Details Cards */}
-                  <div className="grid grid-cols-3 gap-2 p-3 text-xs border bg-base-200/50 rounded-2xl border-base-200">
-                    <div>
-                      <span className="text-[10px] text-base-content/50 block">Est. Budget</span>
-                      <span className="font-bold text-primary">{selectedGroup.estimatedBudget} BDT / hd</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-base-content/50 block">Transport</span>
-                      <span className="block font-semibold truncate text-base-content/90">{selectedGroup.transportation}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-base-content/50 block">Accommodation</span>
-                      <span className="block font-semibold truncate text-base-content/90">{selectedGroup.accommodationPlan || selectedGroup.accommodation}</span>
+                    <div className="text-right flex md:flex-col items-center md:items-end justify-between w-full md:w-auto">
+                      <span className="text-[10px] uppercase font-bold text-base-content/50 block">Est. Budget</span>
+                      <span className="text-xl font-black text-primary">
+                        {Number(groupDetails.estimatedBudget).toLocaleString()} BDT
+                      </span>
                     </div>
                   </div>
 
-                  {/* Members Avatar List */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-base-200">
-                    <span className="mr-2 text-xs font-bold text-base-content/60">Expedition Team:</span>
-                    <div className="-space-x-4 avatar-group rtl:space-x-reverse">
-                      {selectedGroup.members?.map((m, idx) => (
-                        <Link key={idx} to={`/profile/${m.id || m.username}`} className="w-8 h-8 transition-transform border-2 rounded-full avatar border-base-100 tooltip hover:scale-110" data-tip={m.name}>
-                          <img src={m.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=user"} alt={m.name} />
-                        </Link>
-                      ))}
+                  {/* Team Members Avatar Bar */}
+                  <div className="pt-4 border-t border-base-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-base-content/60">Team:</span>
+                      <div className="avatar-group -space-x-3 rtl:space-x-reverse">
+                        {(groupDetails.members || []).map(m => (
+                          <Link to={`/profile/${m.id || m.username}`} key={m.id} className="avatar border-2 border-base-100" title={m.name}>
+                            <div className="w-8 h-8 rounded-full">
+                              <img src={m.avatar} alt={m.name} />
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                      <span className="text-xs font-semibold text-base-content/70 ml-2">
+                        {groupDetails.members?.length || 0} / {groupDetails.maxMembers} Members
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Workspace Tab Panel */}
-                <div className="card bg-base-100 border border-base-200 rounded-3xl overflow-hidden shadow-sm flex-1 min-h-[400px]">
-                  
-                  {/* Tabs */}
-                  <div className="flex flex-wrap gap-1 p-1 border-b rounded-none tabs tabs-boxed bg-base-200 border-base-300">
+                {/* ========================================================================= */}
+                {/* ORGANIZER REVIEW PENDING JOIN REQUESTS PANEL */}
+                {/* ========================================================================= */}
+                {groupDetails.isOrganizer && groupDetails.requests && groupDetails.requests.length > 0 && (
+                  <div className="card bg-gradient-to-r from-amber-500/10 via-base-100 to-amber-500/10 border-2 border-amber-500/40 p-6 rounded-3xl shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Bell className="w-5 h-5 text-amber-500 animate-bounce" />
+                        <h3 className="font-black text-base text-base-content m-0">
+                          Pending Join Requests ({groupDetails.requests.length})
+                        </h3>
+                      </div>
+                      <span className="text-xs text-base-content/60">
+                        Review traveler profiles and approve their expedition participation.
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {groupDetails.requests.map(req => (
+                        <div key={req.id} className="card bg-base-100 border border-base-200 p-4 rounded-2xl shadow-xs flex flex-col justify-between space-y-3">
+                          <div className="flex items-start gap-3">
+                            <Link to={`/profile/${req.user?.id || req.user?.username}`}>
+                              <img src={req.user?.avatar} className="w-12 h-12 rounded-full object-cover border" alt="Requester" />
+                            </Link>
+                            <div className="flex-1 space-y-0.5">
+                              <Link to={`/profile/${req.user?.id || req.user?.username}`} className="font-extrabold text-sm hover:underline block">
+                                {req.user?.name}
+                              </Link>
+                              <span className="text-[11px] text-base-content/60 block">@{req.user?.username}</span>
+                              <span className="badge badge-ghost badge-xs text-[9px] font-bold text-amber-500">
+                                ⭐ {req.user?.points || 350} pts
+                              </span>
+                              {req.user?.bio && (
+                                <p className="text-[11px] text-base-content/70 line-clamp-1 pt-0.5 m-0">
+                                  {req.user?.bio}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-base-200 flex items-center justify-between gap-2">
+                            <Link 
+                              to={`/profile/${req.user?.id || req.user?.username}`}
+                              className="btn btn-xs btn-ghost text-xs text-primary font-bold"
+                            >
+                              View Profile
+                            </Link>
+                            <div className="flex items-center gap-1.5">
+                              <button 
+                                onClick={() => handleRespondRequest(groupDetails.id, req.user?.id, "rejected")}
+                                className="btn btn-xs btn-ghost text-error font-bold rounded-lg px-2.5"
+                              >
+                                Decline
+                              </button>
+                              <button 
+                                onClick={() => handleRespondRequest(groupDetails.id, req.user?.id, "accepted")}
+                                className="btn btn-xs btn-success text-white font-bold rounded-lg px-3"
+                              >
+                                Accept Member
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Workspace Navigation Tabs */}
+                <div className="flex justify-center">
+                  <div className="join bg-base-200 border border-base-300 p-1 rounded-2xl">
                     <button 
-                      onClick={() => setActiveTab("checklist")} 
-                      className={`tab tab-sm font-bold capitalize gap-1.5 ${activeTab === "checklist" ? "tab-active bg-primary text-white font-black" : ""}`}
+                      onClick={() => setActiveTab("checklist")}
+                      className={`join-item btn btn-sm font-black rounded-xl gap-2 ${
+                        activeTab === "checklist" ? "btn-primary text-primary-content" : "btn-ghost"
+                      }`}
                     >
-                      <CheckSquare className="w-3.5 h-3.5" /> Checklist
+                      <CheckSquare className="w-4 h-4" /> Checklist
                     </button>
                     <button 
-                      onClick={() => setActiveTab("budget")} 
-                      className={`tab tab-sm font-bold capitalize gap-1.5 ${activeTab === "budget" ? "tab-active bg-primary text-white font-black" : ""}`}
+                      onClick={() => setActiveTab("budget")}
+                      className={`join-item btn btn-sm font-black rounded-xl gap-2 ${
+                        activeTab === "budget" ? "btn-primary text-primary-content" : "btn-ghost"
+                      }`}
                     >
-                      <TrendingUp className="w-3.5 h-3.5" /> Split-Expenses
+                      <DollarSign className="w-4 h-4" /> Split Budget
                     </button>
                     <button 
-                      onClick={() => setActiveTab("chat")} 
-                      className={`tab tab-sm font-bold capitalize gap-1.5 ${activeTab === "chat" ? "tab-active bg-primary text-white font-black" : ""}`}
+                      onClick={() => setActiveTab("chat")}
+                      className={`join-item btn btn-sm font-black rounded-xl gap-2 ${
+                        activeTab === "chat" ? "btn-primary text-primary-content" : "btn-ghost"
+                      }`}
                     >
-                      <MessageSquare className="w-3.5 h-3.5" /> Chat Room
+                      <MessageSquare className="w-4 h-4" /> Group Chat
                     </button>
                     <button 
-                      onClick={() => setActiveTab("itinerary")} 
-                      className={`tab tab-sm font-bold capitalize gap-1.5 ${activeTab === "itinerary" ? "tab-active bg-primary text-white font-black" : ""}`}
+                      onClick={() => setActiveTab("itinerary")}
+                      className={`join-item btn btn-sm font-black rounded-xl gap-2 relative ${
+                        activeTab === "itinerary" ? "btn-primary text-primary-content" : "btn-ghost"
+                      }`}
                     >
-                      <MapPin className="w-3.5 h-3.5" /> Itinerary
+                      <Compass className="w-4 h-4" /> Itinerary
+                      {pendingSuggestions.length > 0 && (
+                        <span className="badge badge-warning badge-xs font-black text-[9px] px-1.5 py-0.5 ml-1">
+                          {pendingSuggestions.length}
+                        </span>
+                      )}
                     </button>
                   </div>
+                </div>
 
-                  {/* Tab Contents */}
-                  <div className="flex flex-col justify-between flex-1 p-4 md:p-6">
+                {/* ========================================================================= */}
+                {/* TAB 1: COLLABORATIVE CHECKLIST */}
+                {/* ========================================================================= */}
+                {activeTab === "checklist" && (
+                  <div className="card bg-base-100 border border-base-200 p-6 rounded-3xl space-y-6 shadow-xs">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div>
+                        <h3 className="font-black text-lg text-base-content m-0">Collaborative Tasks Checklist</h3>
+                        <p className="text-xs text-base-content/60 m-0">Any member can assign tasks to teammates and track trip readiness together.</p>
+                      </div>
+                      <span className="badge badge-neutral font-bold text-xs">
+                        {groupDetails.checklist?.filter(c => c.completed).length || 0} / {groupDetails.checklist?.length || 0} Completed
+                      </span>
+                    </div>
+
+                    {/* Collaborative Add Task Form */}
+                    <form onSubmit={handleAddTask} className="flex flex-col sm:flex-row gap-2 bg-base-200/40 p-3 rounded-2xl border border-base-200">
+                      <input 
+                        type="text" 
+                        placeholder="Add a new collaborative task (e.g., Book ferry tickets, bring power banks)..." 
+                        className="input input-bordered input-sm flex-1 rounded-xl text-xs" 
+                        value={newTaskText}
+                        onChange={(e) => setNewTaskText(e.target.value)}
+                      />
+
+                      {/* Team Member Assignee Selector */}
+                      <select 
+                        className="select select-bordered select-sm rounded-xl text-xs w-full sm:w-52"
+                        value={selectedAssigneeUserId}
+                        onChange={(e) => setSelectedAssigneeUserId(e.target.value)}
+                      >
+                        <option value="me">🙋 Assign to Me ({currentUser?.name || "Me"})</option>
+                        <optgroup label="Expedition Team Members">
+                          {expeditionTeamMembers.map(m => (
+                            <option key={m.id || m.user_id} value={m.id || m.user_id}>
+                              {m.name || m.username} {m.isOrganizer ? "(Organizer)" : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                        <option value="custom">✏️ Custom Name...</option>
+                      </select>
+
+                      {selectedAssigneeUserId === "custom" && (
+                        <input 
+                          type="text"
+                          placeholder="Type assignee name..."
+                          className="input input-bordered input-sm w-full sm:w-36 rounded-xl text-xs"
+                          value={customAssigneeName}
+                          onChange={(e) => setCustomAssigneeName(e.target.value)}
+                        />
+                      )}
+
+                      <button 
+                        type="submit" 
+                        disabled={addingTask || !newTaskText.trim()}
+                        className="btn btn-sm btn-primary rounded-xl font-black gap-1 text-xs shrink-0"
+                      >
+                        <Plus className="w-4 h-4" /> Add Task
+                      </button>
+                    </form>
+
+                    {/* Checklist Items List */}
+                    <div className="space-y-2">
+                      {(groupDetails.checklist || []).length === 0 ? (
+                        <p className="text-xs text-base-content/50 text-center py-6">No tasks added yet. Create one above!</p>
+                      ) : (
+                        groupDetails.checklist.map(item => (
+                          <div 
+                            key={item.id}
+                            className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all ${
+                              item.completed ? "bg-base-200/40 border-base-200 text-base-content/60" : "bg-base-100 border-base-200 text-base-content"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <input 
+                                type="checkbox" 
+                                checked={item.completed} 
+                                onChange={() => handleToggleTask(item.id, item.completed)}
+                                className="checkbox checkbox-primary checkbox-sm rounded-lg"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <span className={`text-xs font-bold block truncate ${item.completed ? "line-through text-base-content/50" : "text-base-content"}`}>
+                                  {item.task}
+                                </span>
+                                <span className="text-[11px] text-base-content/60 flex items-center gap-1 mt-0.5">
+                                  <Users className="w-3 h-3 text-primary" /> Assigned to: <span className="font-semibold text-base-content">{item.assignedTo || "Unassigned"}</span>
+                                </span>
+                              </div>
+                            </div>
+
+                            <button 
+                              onClick={() => handleDeleteTask(item.id)}
+                              className="btn btn-ghost btn-xs text-error rounded-lg ml-2"
+                              title="Delete Task"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ========================================================================= */}
+                {/* TAB 2: SPLIT BUDGET */}
+                {/* ========================================================================= */}
+                {activeTab === "budget" && (
+                  <div className="card bg-base-100 border border-base-200 p-6 rounded-3xl space-y-6 shadow-xs">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div>
+                        <h3 className="font-black text-lg text-base-content m-0">Group Budget Splitter</h3>
+                        <p className="text-xs text-base-content/60 m-0">Log expenses and track equal splits automatically.</p>
+                      </div>
+                    </div>
+
+                    {/* Cost Metrics Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-primary/10 border border-primary/20 p-4 rounded-2xl">
+                        <span className="text-[10px] text-primary font-bold uppercase block">Total Spent</span>
+                        <span className="text-2xl font-black text-primary">
+                          {totalExpCost.toLocaleString()} BDT
+                        </span>
+                      </div>
+                      <div className="bg-secondary/10 border border-secondary/20 p-4 rounded-2xl">
+                        <span className="text-[10px] text-secondary font-bold uppercase block">Active Members</span>
+                        <span className="text-2xl font-black text-secondary">
+                          {acceptedMembersCount} People
+                        </span>
+                      </div>
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-2xl">
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase block">Cost Per Person</span>
+                        <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                          {perPersonCost.toLocaleString()} BDT
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Add Shared Expense Form */}
+                    <form onSubmit={handleAddExpense} className="flex flex-col sm:flex-row gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Expense Item (e.g., Resort Advance, Jeep Hire)..." 
+                        className="input input-bordered input-sm flex-1 rounded-xl text-xs" 
+                        value={newExpTitle}
+                        onChange={(e) => setNewExpTitle(e.target.value)}
+                      />
+                      <input 
+                        type="number" 
+                        placeholder="Amount (BDT)..." 
+                        className="input input-bordered input-sm w-full sm:w-36 rounded-xl text-xs" 
+                        value={newExpAmount}
+                        onChange={(e) => setNewExpAmount(e.target.value)}
+                      />
+                      <input 
+                        type="text" 
+                        placeholder="Paid By (Name)..." 
+                        className="input input-bordered input-sm w-full sm:w-36 rounded-xl text-xs" 
+                        value={newExpPaidBy}
+                        onChange={(e) => setNewExpPaidBy(e.target.value)}
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={addingExpense || !newExpTitle.trim() || !newExpAmount}
+                        className="btn btn-sm btn-primary rounded-xl font-black gap-1 text-xs shrink-0"
+                      >
+                        <Plus className="w-4 h-4" /> Log Expense
+                      </button>
+                    </form>
+
+                    {/* Expenses Table */}
+                    <div className="overflow-x-auto">
+                      <table className="table table-sm text-xs">
+                        <thead>
+                          <tr className="border-b border-base-200">
+                            <th>Expense</th>
+                            <th>Paid By</th>
+                            <th>Date</th>
+                            <th className="text-right">Amount</th>
+                            <th className="text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(groupDetails.expenses || []).length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="text-center py-6 text-base-content/50">
+                                No expenses logged yet. Add your first shared cost above!
+                              </td>
+                            </tr>
+                          ) : (
+                            groupDetails.expenses.map(exp => (
+                              <tr key={exp.id}>
+                                <td className="font-bold">{exp.title}</td>
+                                <td>{exp.paidBy}</td>
+                                <td className="text-base-content/60">{exp.date}</td>
+                                <td className="font-black text-right text-primary">
+                                  {Number(exp.amount).toLocaleString()} BDT
+                                </td>
+                                <td className="text-right">
+                                  <button 
+                                    onClick={() => handleDeleteExpense(exp.id)}
+                                    className="btn btn-ghost btn-xs text-error rounded-lg"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* ========================================================================= */}
+                {/* TAB 3: LIVE GROUP CHAT */}
+                {/* ========================================================================= */}
+                {activeTab === "chat" && (
+                  <div className="card bg-base-100 border border-base-200 rounded-3xl overflow-hidden shadow-xs flex flex-col h-[520px]">
+                    {/* Chat Header */}
+                    <div className="bg-base-200/60 p-4 border-b border-base-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-primary" />
+                        <span className="font-black text-xs text-base-content">
+                          {groupDetails.title} • Live Chat Stream
+                        </span>
+                      </div>
+                      <Link 
+                        to={`/chats?conversationId=${groupDetails.conversationId}`} 
+                        className="text-xs text-primary font-bold hover:underline flex items-center gap-1"
+                      >
+                        Open in Full Chat <ExternalLink className="w-3 h-3" />
+                      </Link>
+                    </div>
+
+                    {/* Messages Body */}
+                    <div className="flex-1 p-4 overflow-y-auto space-y-3">
+                      {loadingChat ? (
+                        <div className="text-center py-10">
+                          <span className="loading loading-spinner loading-md text-primary"></span>
+                        </div>
+                      ) : chatMessages.length === 0 ? (
+                        <div className="text-center py-16 text-xs text-base-content/50 space-y-1">
+                          <MessageSquare className="w-8 h-8 mx-auto text-base-content/30" />
+                          <p className="font-bold">No messages in this expedition chat yet.</p>
+                          <p>Start the conversation below!</p>
+                        </div>
+                      ) : (
+                        chatMessages.map(msg => {
+                          const isMe = msg.senderId === currentUserId || msg.sender_id === currentUserId;
+                          const isSystem = msg.type === "system" || msg.message_type === "system";
+
+                          if (isSystem) {
+                            return (
+                              <div key={msg.id} className="text-center py-1">
+                                <span className="badge badge-ghost badge-sm text-[10px] text-base-content/60 font-semibold px-3 py-1">
+                                  {msg.text || msg.message_text}
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={msg.id} className={`chat ${isMe ? "chat-end" : "chat-start"}`}>
+                              <div className="chat-image avatar">
+                                <div className="w-7 h-7 rounded-full">
+                                  <img 
+                                    src={msg.senderAvatar || msg.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${msg.senderName || 'traveler'}`} 
+                                    alt="Avatar" 
+                                  />
+                                </div>
+                              </div>
+                              <div className="chat-header text-[10px] text-base-content/50 mb-0.5">
+                                {msg.senderName} <time className="text-[9px] opacity-70 ml-1">{msg.time || ""}</time>
+                              </div>
+                              <div className={`chat-bubble text-xs ${isMe ? "chat-bubble-primary text-primary-content" : "bg-base-200 text-base-content"}`}>
+                                {msg.text || msg.message_text}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                      <div ref={chatBottomRef} />
+                    </div>
+
+                    {/* Chat Input */}
+                    <form onSubmit={handleSendMessage} className="p-3 bg-base-200/50 border-t border-base-200 flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Type message to expedition team..." 
+                        className="input input-bordered input-sm flex-1 rounded-xl text-xs"
+                        value={newChatMessage}
+                        onChange={(e) => setNewChatMessage(e.target.value)}
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={sendingMessage || !newChatMessage.trim()}
+                        className="btn btn-sm btn-primary rounded-xl font-bold gap-1 text-xs"
+                      >
+                        <Send className="w-3.5 h-3.5" /> Send
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* ========================================================================= */}
+                {/* TAB 4: ITINERARY WITH SUGGESTIONS / APPEALS WORKFLOW */}
+                {/* ========================================================================= */}
+                {activeTab === "itinerary" && (
+                  <div className="space-y-6">
                     
-                    {/* Tab: CHECKLIST */}
-                    {activeTab === "checklist" && (
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between pb-2 border-b border-base-200">
-                          <span className="text-xs font-bold text-base-content/60">Collaborative Preparation Tasks</span>
-                          <span className="text-xs font-bold text-primary">
-                            {selectedGroup.checklist?.filter(t => t.completed).length || 0} / {selectedGroup.checklist?.length || 0} Completed
+                    {/* Itinerary Header & Propose Appeal Button */}
+                    <div className="card bg-base-100 border border-base-200 p-6 rounded-3xl shadow-xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h3 className="font-black text-lg text-base-content m-0 flex items-center gap-2">
+                          <Compass className="w-5 h-5 text-primary" /> Day-by-Day Expedition Itinerary
+                        </h3>
+                        <p className="text-xs text-base-content/60 m-0">Scheduled activities, checkpoints, and collaborative proposals from team members.</p>
+                      </div>
+
+                      <button 
+                        onClick={() => {
+                          setAppealDay((groupDetails.itinerary?.[0]?.day) || "Day 1");
+                          setIsAppealModalOpen(true);
+                        }}
+                        className="btn btn-sm btn-primary rounded-2xl font-black gap-2 text-xs shadow-sm shrink-0"
+                      >
+                        <Lightbulb className="w-4 h-4 text-amber-300" /> Propose Activity / Appeal
+                      </button>
+                    </div>
+
+                    {/* ========================================================================= */}
+                    {/* ORGANIZER REVIEW PANEL FOR ITINERARY APPEALS */}
+                    {/* ========================================================================= */}
+                    {groupDetails.isOrganizer && pendingSuggestions.length > 0 && (
+                      <div className="card bg-gradient-to-r from-amber-500/10 via-base-100 to-amber-500/10 border-2 border-amber-500/40 p-6 rounded-3xl shadow-sm space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Bell className="w-5 h-5 text-amber-500 animate-bounce" />
+                            <h4 className="font-black text-base text-base-content m-0">
+                              Member Itinerary Appeals Awaiting Your Review ({pendingSuggestions.length})
+                            </h4>
+                          </div>
+                          <span className="text-xs text-base-content/60">
+                            Accept to automatically merge into the official itinerary schedule, or decline with a reason.
                           </span>
                         </div>
 
-                        <div className="space-y-2">
-                          {selectedGroup.checklist?.map(task => (
-                            <div 
-                              key={task.id} 
-                              onClick={() => toggleChecklist(task.id)}
-                              className={`flex items-center justify-between p-3 rounded-2xl border transition-colors cursor-pointer ${task.completed ? 'bg-base-200/50 line-through text-base-content/40 border-base-200' : 'bg-base-100 hover:bg-base-200 border-base-300'}`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <input 
-                                  type="checkbox" 
-                                  checked={task.completed} 
-                                  onChange={() => {}}
-                                  className="rounded checkbox checkbox-primary checkbox-xs" 
-                                />
-                                <span className="text-xs font-semibold">{task.task}</span>
-                              </div>
-                              <span className="badge badge-sm badge-outline text-[10px] font-bold opacity-75">
-                                👤 {task.assignedTo}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Add Checklist task */}
-                        <form onSubmit={handleAddTask} className="flex flex-col gap-2 pt-4 border-t sm:flex-row border-base-200">
-                          <input 
-                            type="text" 
-                            placeholder="Add task details..." 
-                            className="flex-1 text-xs input input-sm input-bordered rounded-xl bg-base-100" 
-                            value={newTaskText}
-                            onChange={(e) => setNewTaskText(e.target.value)}
-                            required
-                          />
-                          <select 
-                            className="text-xs select select-sm select-bordered rounded-xl"
-                            value={newTaskAssignee}
-                            onChange={(e) => setNewTaskAssignee(e.target.value)}
-                          >
-                            <option value="">Assignee (Default: Me)</option>
-                            {selectedGroup.members?.map((m, idx) => (
-                              <option key={idx} value={m.name}>{m.name}</option>
-                            ))}
-                          </select>
-                          <button type="submit" className="text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Add Task</button>
-                        </form>
-                      </div>
-                    )}
-
-                    {/* Tab: BUDGET & SPLITS */}
-                    {activeTab === "budget" && (
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-3 gap-2 p-3 text-center border bg-primary/10 border-primary/20 rounded-2xl">
-                          <div className="leading-tight">
-                            <span className="text-[10px] text-base-content/60 block">Total Spent</span>
-                            <span className="text-sm font-black text-primary">{totalSpent} BDT</span>
-                          </div>
-                          <div className="leading-tight border-x border-base-300">
-                            <span className="text-[10px] text-base-content/60 block">Members</span>
-                            <span className="text-sm font-black">{selectedGroup.members?.length || 1}</span>
-                          </div>
-                          <div className="leading-tight">
-                            <span className="text-[10px] text-base-content/60 block">Share / head</span>
-                            <span className="text-sm font-black text-secondary">{perMemberShare} BDT</span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <span className="block text-xs font-bold text-base-content/60">Expense Ledger</span>
-                          {selectedGroup.expenses?.length === 0 ? (
-                            <div className="py-6 text-xs text-center border border-dashed text-base-content/50 border-base-300 rounded-2xl">
-                              No expenses logged yet. Add one below!
-                            </div>
-                          ) : (
-                            selectedGroup.expenses?.map(exp => (
-                              <div key={exp.id} className="flex items-center justify-between p-3 border rounded-2xl border-base-300 bg-base-100">
-                                <div>
-                                  <h4 className="text-xs font-bold">{exp.title}</h4>
-                                  <span className="text-[10px] text-base-content/50">Paid by: {exp.paidBy} &nbsp;•&nbsp; {exp.date}</span>
-                                </div>
-                                <span className="text-sm font-black text-primary">{exp.amount} BDT</span>
-                              </div>
-                            ))
-                          )}
-                        </div>
-
-                        <form onSubmit={handleAddExpense} className="flex flex-col gap-2 pt-4 border-t sm:flex-row border-base-200">
-                          <input 
-                            type="text" 
-                            placeholder="e.g. Resort Deposit" 
-                            className="flex-1 text-xs input input-sm input-bordered rounded-xl" 
-                            value={newExpTitle}
-                            onChange={(e) => setNewExpTitle(e.target.value)}
-                            required
-                          />
-                          <input 
-                            type="number" 
-                            placeholder="Amount BDT" 
-                            className="w-full text-xs input input-sm input-bordered sm:w-28 rounded-xl" 
-                            value={newExpAmount}
-                            onChange={(e) => setNewExpAmount(e.target.value)}
-                            required
-                          />
-                          <select 
-                            className="text-xs select select-sm select-bordered rounded-xl"
-                            value={newExpPaidBy}
-                            onChange={(e) => setNewExpPaidBy(e.target.value)}
-                          >
-                            <option value="">Paid By (Me)</option>
-                            {selectedGroup.members?.map((m, idx) => (
-                              <option key={idx} value={m.name}>{m.name}</option>
-                            ))}
-                          </select>
-                          <button type="submit" className="text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Log Bill</button>
-                        </form>
-                      </div>
-                    )}
-
-                    {/* Tab: CHAT */}
-                    {activeTab === "chat" && (
-                      <div className="flex flex-col h-[350px]">
-                        <div className="flex-1 p-3 mb-3 space-y-3 overflow-y-auto border bg-base-200/50 rounded-2xl border-base-300">
-                          {selectedGroup.messages?.length === 0 ? (
-                            <div className="py-10 text-xs text-center text-base-content/40">
-                              Welcome to the group chat! Start coordinating logistics here.
-                            </div>
-                          ) : (
-                            selectedGroup.messages?.map(msg => {
-                              const isMe = msg.sender?.id === currentUser?.id || msg.sender?.username === currentUser?.username;
-                              return (
-                                <div key={msg.id} className={`chat ${isMe ? "chat-end" : "chat-start"}`}>
-                                  <div className="chat-image avatar">
-                                    <div className="w-8 border rounded-full border-base-300">
-                                      <img src={msg.sender?.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=user"} alt={msg.sender?.name} />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                          {pendingSuggestions.map(sug => (
+                            <div key={sug.id} className="card bg-base-100 border border-amber-500/30 p-4 rounded-2xl shadow-xs flex flex-col justify-between space-y-3">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <img src={sug.userAvatar} className="w-8 h-8 rounded-full border" alt="Member" />
+                                    <div>
+                                      <span className="font-extrabold text-xs text-base-content block">{sug.userName}</span>
+                                      <span className="text-[10px] text-base-content/50 block">Proposed for <span className="font-bold text-primary">{sug.day}</span></span>
                                     </div>
                                   </div>
-                                  <div className="chat-header text-[10px] opacity-60">
-                                    @{msg.sender?.username || "traveler"} &nbsp;<time className="text-[8px]">{msg.time}</time>
-                                  </div>
-                                  <div className={`chat-bubble text-xs ${isMe ? 'chat-bubble-primary text-white' : 'chat-bubble-neutral'}`}>
-                                    {msg.text}
-                                  </div>
+                                  <span className="badge badge-warning font-black text-[10px] px-2">
+                                    ⏳ Pending Review
+                                  </span>
                                 </div>
-                              );
-                            })
-                          )}
-                        </div>
 
-                        <form onSubmit={handleSendGroupMessage} className="flex gap-2">
-                          <input 
-                            type="text" 
-                            placeholder="Type message to team..." 
-                            className="flex-1 text-xs input input-sm input-bordered rounded-xl" 
-                            value={newChatMessage}
-                            onChange={(e) => setNewChatMessage(e.target.value)}
-                            required
-                          />
-                          <button type="submit" className="text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Send</button>
-                        </form>
-                      </div>
-                    )}
+                                <div className="bg-base-200/50 p-3 rounded-xl space-y-1">
+                                  <span className="text-[10px] font-bold uppercase text-base-content/50 block">Suggested Activity / Plan:</span>
+                                  <p className="text-xs font-semibold text-base-content m-0 leading-relaxed whitespace-pre-line">
+                                    {sug.activityPlan}
+                                  </p>
+                                </div>
 
-                    {/* Tab: ITINERARY */}
-                    {activeTab === "itinerary" && (
-                      <div className="space-y-4">
-                        <span className="block pb-2 text-xs font-bold border-b text-base-content/60 border-base-200">Chronological Excursion Plan</span>
-                        <div className="space-y-4">
-                          {selectedGroup.itinerary?.map((item, idx) => (
-                            <div key={idx} className="flex items-start gap-4">
-                              <div className="badge badge-primary py-2 px-3 rounded-lg font-black text-[10px]">{item.day}</div>
-                              <div className="flex-1 p-3 text-xs border bg-base-200 rounded-2xl border-base-300">
-                                <p className="font-semibold leading-relaxed text-base-content/85">{item.plan}</p>
+                                {sug.reason && (
+                                  <div className="text-[11px] text-base-content/70 italic bg-amber-500/5 p-2 rounded-lg border border-amber-500/10">
+                                    <span className="font-bold not-italic text-amber-600 dark:text-amber-400">Reason / Note: </span>
+                                    "{sug.reason}"
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="pt-2 border-t border-base-200 flex items-center justify-end gap-2">
+                                <button 
+                                  onClick={() => {
+                                    setRejectingSuggestion(sug);
+                                    setRejectionReasonText("");
+                                  }}
+                                  className="btn btn-xs btn-ghost text-error font-bold rounded-lg px-2.5"
+                                >
+                                  Decline with Reason
+                                </button>
+                                <button 
+                                  onClick={() => handleAcceptSuggestion(sug.id)}
+                                  className="btn btn-xs btn-success text-white font-bold rounded-lg px-3 gap-1 shadow-xs"
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Accept & Merge
+                                </button>
                               </div>
                             </div>
                           ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Official Day-by-Day Itinerary Schedule */}
+                    <div className="card bg-base-100 border border-base-200 p-6 rounded-3xl space-y-4 shadow-xs">
+                      <h4 className="font-extrabold text-sm text-base-content uppercase tracking-wider m-0">
+                        Official Trip Schedule
+                      </h4>
+
+                      <div className="space-y-3 pt-1">
+                        {(groupDetails.itinerary || []).map((dayPlan, idx) => (
+                          <div key={idx} className="flex flex-col sm:flex-row gap-3 sm:gap-4 p-4 rounded-2xl bg-base-200/40 border border-base-200 items-start">
+                            <div className="badge badge-primary font-black text-xs py-2.5 px-3 shrink-0">
+                              {dayPlan.day || `Day ${idx + 1}`}
+                            </div>
+                            <div className="text-xs text-base-content/80 m-0 leading-relaxed pt-0.5 whitespace-pre-line flex-1">
+                              {dayPlan.plan}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Community Proposals & Appeals History */}
+                    {(groupDetails.itinerarySuggestions || []).length > 0 && (
+                      <div className="card bg-base-100 border border-base-200 p-6 rounded-3xl space-y-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-extrabold text-sm text-base-content uppercase tracking-wider m-0 flex items-center gap-2">
+                            <MessageCircle className="w-4 h-4 text-primary" /> Member Suggestions & Appeals Log ({(groupDetails.itinerarySuggestions || []).length})
+                          </h4>
+                          <span className="text-xs text-base-content/50">
+                            History of all ideas submitted by expedition members
+                          </span>
+                        </div>
+
+                        <div className="space-y-3 pt-1">
+                          {(groupDetails.itinerarySuggestions || []).map(sug => {
+                            const isMine = sug.userId === currentUserId;
+                            return (
+                              <div 
+                                key={sug.id} 
+                                className={`p-4 rounded-2xl border flex flex-col justify-between space-y-2.5 ${
+                                  sug.status === "accepted" ? "bg-emerald-500/5 border-emerald-500/20" :
+                                  sug.status === "rejected" ? "bg-rose-500/5 border-rose-500/20" :
+                                  "bg-base-200/40 border-base-200"
+                                }`}
+                              >
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <img src={sug.userAvatar} className="w-6 h-6 rounded-full border" alt="User" />
+                                    <span className="font-bold text-xs text-base-content">{sug.userName}</span>
+                                    <span className="badge badge-ghost badge-sm text-[10px] font-semibold">{sug.day}</span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    {sug.status === "accepted" && (
+                                      <span className="badge badge-success text-white badge-sm font-bold text-[10px] gap-1">
+                                        <CheckCircle2 className="w-3 h-3" /> Accepted & Added
+                                      </span>
+                                    )}
+                                    {sug.status === "rejected" && (
+                                      <span className="badge badge-error text-white badge-sm font-bold text-[10px] gap-1">
+                                        <XCircle className="w-3 h-3" /> Declined
+                                      </span>
+                                    )}
+                                    {sug.status === "pending" && (
+                                      <span className="badge badge-warning badge-sm font-bold text-[10px] gap-1">
+                                        ⏳ Awaiting Creator Review
+                                      </span>
+                                    )}
+
+                                    {/* Submitter can delete/withdraw their proposal */}
+                                    {isMine && sug.status === "pending" && (
+                                      <button 
+                                        onClick={() => handleDeleteSuggestion(sug.id)}
+                                        className="btn btn-ghost btn-xs text-error rounded-lg font-bold text-[10px] px-2"
+                                        title="Withdraw Proposal"
+                                      >
+                                        Withdraw
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-base-content font-medium m-0 leading-relaxed whitespace-pre-line pl-8">
+                                  {sug.activityPlan}
+                                </p>
+
+                                {sug.reason && (
+                                  <p className="text-[11px] text-base-content/60 italic m-0 pl-8">
+                                    Motivation: "{sug.reason}"
+                                  </p>
+                                )}
+
+                                {/* Reason message from Creator if rejected */}
+                                {sug.status === "rejected" && sug.rejectionReason && (
+                                  <div className="ml-8 mt-1 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs">
+                                    <span className="font-bold block text-[10px] uppercase tracking-wider">Note from Expedition Organizer:</span>
+                                    <span className="font-semibold">{sug.rejectionReason}</span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
 
                   </div>
+                )}
 
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODAL 1: "SEE MORE" DETAILED EXPEDITION VIEW MODAL */}
+        {/* ========================================================================= */}
+        {detailModalGroup && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+            <div className="bg-base-100 border border-base-300 rounded-3xl w-full max-w-lg p-6 md:p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              
+              <div className="flex justify-between items-start gap-3">
+                <div className="space-y-1">
+                  <span className="badge badge-primary badge-sm font-black text-[10px]">
+                    Expedition Overview
+                  </span>
+                  <h3 className="font-black text-xl text-base-content m-0">
+                    {detailModalGroup.title}
+                  </h3>
                 </div>
+                <button 
+                  onClick={() => setDetailModalGroup(null)}
+                  className="btn btn-ghost btn-sm btn-circle text-base-content/60"
+                >
+                  ✕
+                </button>
               </div>
 
-              {/* Right Side: Expedition Approvals (for organizer) */}
-              <div className="space-y-6">
-                {(selectedGroup.organizer?.id === currentUser?.id || selectedGroup.organizer?.username === currentUser?.username) && selectedGroup.requests?.length > 0 && (
-                  <div className="p-5 space-y-3 border shadow-sm card bg-base-100 border-base-200 rounded-3xl">
-                    <h3 className="font-bold text-sm text-warning flex items-center gap-1.5">
-                      <UserCheck className="w-4 h-4" /> Expedition Approvals
-                    </h3>
-                    
+              <div className="space-y-4 text-xs">
+                
+                {/* Key Metrics */}
+                <div className="grid grid-cols-2 gap-2.5 bg-base-200/60 p-4 rounded-2xl">
+                  <div>
+                    <span className="text-[10px] text-base-content/50 uppercase font-bold block">Destination</span>
+                    <span className="font-extrabold text-base-content flex items-center gap-1 mt-0.5">
+                      <MapPin className="w-3.5 h-3.5 text-primary" /> {detailModalGroup.destination}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-base-content/50 uppercase font-bold block">Travel Date</span>
+                    <span className="font-extrabold text-base-content flex items-center gap-1 mt-0.5">
+                      <Calendar className="w-3.5 h-3.5 text-secondary" /> {formatDate(detailModalGroup.travelDate)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-base-content/50 uppercase font-bold block">Est. Budget per Person</span>
+                    <span className="font-extrabold text-primary text-sm mt-0.5 block">
+                      {Number(detailModalGroup.estimatedBudget).toLocaleString()} BDT
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-base-content/50 uppercase font-bold block">Team Capacity</span>
+                    <span className="font-extrabold text-base-content text-sm mt-0.5 block">
+                      {detailModalGroup.memberCount || 1}/{detailModalGroup.maxMembers} Members
+                    </span>
+                  </div>
+                </div>
+
+                {/* Organizer Profile Information */}
+                <div className="p-4 bg-base-200/40 rounded-2xl border border-base-200 space-y-2">
+                  <span className="text-[10px] uppercase font-black text-base-content/50 block">Expedition Creator / Organizer</span>
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={detailModalGroup.organizer?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${detailModalGroup.organizer?.name || 'traveler'}`} 
+                      className="w-11 h-11 rounded-full object-cover border" 
+                      alt="Organizer" 
+                    />
+                    <div>
+                      <span className="font-extrabold text-sm text-base-content block">
+                        {detailModalGroup.organizer?.name || "Organizer"}
+                      </span>
+                      <span className="text-[11px] text-base-content/60 block">
+                        @{detailModalGroup.organizer?.username || "traveler"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Logistics */}
+                <div className="space-y-2 bg-base-200/40 p-4 rounded-2xl border border-base-200">
+                  <div className="flex items-center gap-2">
+                    <Bus className="w-4 h-4 text-accent" />
+                    <span className="text-base-content/70">Transportation:</span>
+                    <span className="font-bold text-base-content">{detailModalGroup.transportation}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Home className="w-4 h-4 text-emerald-500" />
+                    <span className="text-base-content/70">Stay / Accommodation:</span>
+                    <span className="font-bold text-base-content">{detailModalGroup.accommodationPlan}</span>
+                  </div>
+                </div>
+
+                {/* Itinerary Schedule Preview */}
+                {detailModalGroup.itinerary && detailModalGroup.itinerary.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[10px] uppercase font-black text-base-content/50 block">Itinerary Plan</span>
                     <div className="space-y-2">
-                      {selectedGroup.requests.map(req => (
-                        <div key={req.id} className="flex items-center justify-between gap-2 p-3 border bg-base-200 border-base-300 rounded-2xl">
-                          <div className="flex items-center gap-2">
-                            <img src={req.user?.avatar} className="object-cover rounded-full w-7 h-7" alt="Requester" />
-                            <div className="leading-tight">
-                              <span className="block text-xs font-bold">{req.user?.name}</span>
-                              <span className="text-[9px] text-base-content/50 block">@{req.user?.username}</span>
-                            </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <button 
-                              onClick={() => handleAcceptUser(selectedGroup.id, req.id)}
-                              className="px-2 font-bold text-white rounded-lg btn btn-xs btn-success"
-                            >
-                              Accept
-                            </button>
-                            <button 
-                              onClick={() => handleRejectUser(selectedGroup.id, req.id)}
-                              className="px-2 font-bold rounded-lg btn btn-xs btn-ghost text-error"
-                            >
-                              Decline
-                            </button>
-                          </div>
+                      {detailModalGroup.itinerary.map((d, i) => (
+                        <div key={i} className="p-2.5 rounded-xl bg-base-200/50 border border-base-200/60 flex items-start gap-2.5">
+                          <span className="badge badge-primary badge-xs font-bold shrink-0">{d.day || `Day ${i + 1}`}</span>
+                          <span className="text-xs text-base-content/80 whitespace-pre-line">{d.plan}</span>
                         </div>
                       ))}
                     </div>
@@ -925,252 +1700,387 @@ export default function GroupPlanner() {
                 )}
               </div>
 
-            </div>
-          ) : (
-            /* IF USER IS NOT A MEMBER: SHOW DETAILS & DESCRIPTION PREVIEW CARD */
-            <div className="p-6 space-y-6 border shadow-lg card bg-base-100 border-base-200 md:p-8 rounded-3xl">
-              
-              {/* Header Title & Geotag */}
-              <div className="pb-5 space-y-2 border-b border-base-200">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="px-3 py-1 text-xs font-bold badge badge-primary">Public Expedition Details</span>
-                  <span className="flex items-center gap-1 text-xs text-base-content/60">
-                    <Calendar className="w-4 h-4 text-info" /> {selectedGroup.travelDate}
-                  </span>
-                </div>
-                <h2 className="text-2xl font-black sm:text-3xl text-base-content">{selectedGroup.title}</h2>
-                <div className="flex items-center gap-1.5 text-xs text-primary font-bold">
-                  <MapPin className="w-4 h-4" />
-                  <span>{selectedGroup.destination}</span>
-                </div>
-              </div>
-
-              {/* Creator / Organizer Profile Section */}
-              <div className="flex items-center justify-between p-4 border bg-base-200/60 border-base-300 rounded-2xl">
-                <div className="flex items-center gap-3">
-                  <img 
-                    src={selectedGroup.organizer?.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=organizer"} 
-                    alt={selectedGroup.organizer?.name} 
-                    className="object-cover w-12 h-12 border-2 rounded-full border-primary" 
-                  />
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-black text-base-content">{selectedGroup.organizer?.name}</h4>
-                      <span className="badge badge-warning text-[10px] font-bold text-slate-900">Expedition Organizer</span>
-                    </div>
-                    <span className="block text-xs text-base-content/60">@{selectedGroup.organizer?.username || "organizer"}</span>
-                  </div>
-                </div>
-
-                <Link 
-                  to={`/profile/${selectedGroup.organizer?.id || selectedGroup.organizer?.username}`}
-                  className="font-bold btn btn-xs btn-outline rounded-xl"
-                >
-                  View Creator Profile
-                </Link>
-              </div>
-
-              {/* Members Joined Capacity */}
-              <div className="p-4 space-y-3 border bg-base-200/30 rounded-2xl border-base-200">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-base-content flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-primary" /> Members Capacity ({selectedGroup.members?.length || 1} / {selectedGroup.maxMembers} Joined)
-                  </span>
-                  <span className="text-xs font-bold text-primary">
-                    {selectedGroup.maxMembers - (selectedGroup.members?.length || 1)} Spots Left
-                  </span>
-                </div>
-
-                <div className="w-full bg-base-300 h-2.5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full transition-all bg-primary" 
-                    style={{ width: `${((selectedGroup.members?.length || 1) / selectedGroup.maxMembers) * 100}%` }}
-                  />
-                </div>
-
-                {/* Member Avatars */}
-                <div className="flex items-center gap-2 pt-1">
-                  <span className="text-xs font-semibold text-base-content/60">Current Members:</span>
-                  <div className="-space-x-3 avatar-group rtl:space-x-reverse">
-                    {selectedGroup.members?.map((m, idx) => (
-                      <div key={idx} className="border-2 rounded-full avatar border-base-100 w-7 h-7 tooltip" data-tip={m.name}>
-                        <img src={m.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=user"} alt={m.name} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Description & Logistics Overview */}
-              <div className="grid grid-cols-1 gap-4 text-xs sm:grid-cols-3">
-                <div className="p-4 space-y-1 border bg-base-200/50 rounded-2xl border-base-200">
-                  <span className="text-[10px] font-bold text-base-content/50 uppercase block">Estimated Budget</span>
-                  <span className="block text-sm font-black text-primary">{selectedGroup.estimatedBudget} BDT</span>
-                  <span className="text-[10px] text-base-content/60 block">Per member split share</span>
-                </div>
-
-                <div className="p-4 space-y-1 border bg-base-200/50 rounded-2xl border-base-200">
-                  <span className="text-[10px] font-bold text-base-content/50 uppercase block">Transportation Mode</span>
-                  <span className="block text-xs font-bold text-base-content/90">{selectedGroup.transportation}</span>
-                  <span className="text-[10px] text-base-content/60 block">Organized group route</span>
-                </div>
-
-                <div className="p-4 space-y-1 border bg-base-200/50 rounded-2xl border-base-200">
-                  <span className="text-[10px] font-bold text-base-content/50 uppercase block font-semibold">Accommodation</span>
-                  <span className="block text-xs font-bold text-base-content/90">{selectedGroup.accommodationPlan || selectedGroup.accommodation}</span>
-                  <span className="text-[10px] text-base-content/60 block">Reserved hotel / camping</span>
-                </div>
-              </div>
-
-              {/* Itinerary Preview */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold tracking-wider uppercase text-base-content">Itinerary Outline Preview</h4>
-                <div className="space-y-3">
-                  {selectedGroup.itinerary?.map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-3 p-3 border bg-base-200/40 rounded-2xl border-base-200">
-                      <span className="badge badge-primary badge-sm font-bold text-[10px] mt-0.5">{item.day}</span>
-                      <p className="m-0 text-xs leading-relaxed text-base-content/85">{item.plan}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Request to Join CTA */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-base-200">
+              {/* Action Buttons inside Modal */}
+              <div className="pt-2 border-t border-base-200 flex justify-end gap-2">
                 <button 
-                  onClick={() => setSelectedGroupId(null)} 
-                  className="text-xs font-bold btn btn-ghost btn-md rounded-2xl"
+                  onClick={() => setDetailModalGroup(null)}
+                  className="btn btn-sm btn-ghost rounded-xl font-bold text-xs"
                 >
-                  Back to List
+                  Close
                 </button>
 
-                {selectedGroup.requests?.some(r => r.user?.id === currentUser?.id || r.user?.username === currentUser?.username) ? (
-                  <button disabled className="px-6 text-xs font-bold btn btn-neutral btn-md rounded-2xl">
-                    Join Request Sent (Pending Approval ⌛)
+                {detailModalGroup.isOrganizer || detailModalGroup.isMember ? (
+                  <button 
+                    onClick={() => {
+                      setSelectedGroupId(detailModalGroup.id);
+                      setDetailModalGroup(null);
+                    }}
+                    className="btn btn-sm btn-primary rounded-xl font-bold text-xs gap-1 shadow-xs"
+                  >
+                    Open Workspace <ArrowRight className="w-3.5 h-3.5" />
                   </button>
-                ) : (selectedGroup.members?.length || 0) >= selectedGroup.maxMembers ? (
-                  <button disabled className="px-6 text-xs font-bold btn btn-disabled btn-md rounded-2xl">
-                    Expedition Full
+                ) : detailModalGroup.isPending ? (
+                  <button 
+                    onClick={() => handleWithdrawRequest(detailModalGroup.id)}
+                    className="btn btn-sm btn-error btn-outline rounded-xl font-bold text-xs"
+                  >
+                    Withdraw Request
                   </button>
                 ) : (
                   <button 
-                    onClick={() => handleJoinRequest(selectedGroup.id)}
-                    className="px-6 text-xs font-bold text-white shadow-lg btn btn-primary btn-md rounded-2xl shadow-primary/20"
+                    onClick={() => handleJoinRequest(detailModalGroup.id)}
+                    className="btn btn-sm btn-primary rounded-xl font-bold text-xs gap-1 shadow-xs"
                   >
-                    Request to Join Expedition 🚀
+                    Request to Join <UserPlus className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
 
             </div>
-          )}
+          </div>
+        )}
 
-        </div>
-      )}
-
-      {/* Plan Expedition Modal Dialog */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="w-full max-w-md p-6 space-y-4 border shadow-2xl bg-base-100 border-base-300 rounded-3xl">
-            <h3 className="text-lg font-black text-base-content">Plan Group Expedition</h3>
-            
-            <form onSubmit={handleCreateGroup} className="space-y-4">
-              <div className="form-control">
-                <label className="label py-0.5"><span className="text-xs font-bold label-text">Expedition Name</span></label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Sajek Valley Trekking Tents" 
-                  className="w-full text-xs input input-sm input-bordered rounded-xl" 
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="form-control">
-                <label className="label py-0.5"><span className="text-xs font-bold label-text">Destination</span></label>
-                <input 
-                  type="text" 
-                  list="group-planner-destination-list"
-                  placeholder="e.g. Cox's Bazar Beach, Bandarban, Sylhet..." 
-                  className="w-full text-xs input input-sm input-bordered rounded-xl"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  required
-                />
-                <datalist id="group-planner-destination-list">
-                  {MOCK_DESTINATIONS.map(d => (
-                    <option key={d.id} value={d.name}>{d.name}</option>
-                  ))}
-                </datalist>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-control">
-                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Travel Date</span></label>
-                  <input 
-                    type="date" 
-                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
-                    value={travelDate}
-                    onChange={(e) => setTravelDate(e.target.value)}
-                    required
-                  />
+        {/* ========================================================================= */}
+        {/* MODAL 2: CREATE NEW EXPEDITION MODAL */}
+        {/* ========================================================================= */}
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+            <div className="bg-base-100 border border-base-300 rounded-3xl w-full max-w-xl p-6 md:p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-black text-2xl text-base-content m-0">
+                    Plan a Group Expedition
+                  </h3>
+                  <p className="text-xs text-base-content/60 mt-1">
+                    Set up your cooperative trip, gather travelers, and collaborate seamlessly.
+                  </p>
                 </div>
-                <div className="form-control">
-                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Max Members</span></label>
-                  <input 
-                    type="number" 
-                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
-                    value={maxMembers}
-                    onChange={(e) => setMaxMembers(e.target.value)}
-                    required
-                  />
-                </div>
+                <button 
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn btn-ghost btn-sm btn-circle text-base-content/60"
+                >
+                  ✕
+                </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="form-control">
-                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Transport Method</span></label>
+              <form onSubmit={handleCreateGroup} className="space-y-4 text-xs">
+                
+                <div className="space-y-1">
+                  <label className="font-bold text-base-content">Expedition Title</label>
                   <input 
                     type="text" 
-                    placeholder="e.g. Bus & Boat" 
-                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
-                    value={transport}
-                    onChange={(e) => setTransport(e.target.value)}
+                    placeholder="e.g. 3-Day Sajek Valley & Konglak Peak Cloud Walk"
+                    className="input input-bordered w-full rounded-2xl text-xs"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
                   />
                 </div>
-                <div className="form-control">
-                  <label className="label py-0.5"><span className="text-xs font-bold label-text">Budget / head (BDT)</span></label>
-                  <input 
-                    type="number" 
-                    className="w-full text-xs input input-sm input-bordered rounded-xl" 
-                    value={budget}
-                    onChange={(e) => setBudget(e.target.value)}
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-base-content">Destination</label>
+                    <select 
+                      className="select select-bordered w-full rounded-2xl text-xs"
+                      value={destination}
+                      onChange={(e) => setDestination(e.target.value)}
+                    >
+                      {MOCK_DESTINATIONS.map(d => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-base-content">Travel Date</label>
+                    <input 
+                      type="date" 
+                      className="input input-bordered w-full rounded-2xl text-xs"
+                      value={travelDate}
+                      onChange={(e) => setTravelDate(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="form-control">
-                <label className="label py-0.5"><span className="text-xs font-bold label-text">Hotel / Accommodation Plan</span></label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Hotel Seagull & Camping" 
-                  className="w-full text-xs input input-sm input-bordered rounded-xl" 
-                  value={accommodation}
-                  onChange={(e) => setAccommodation(e.target.value)}
-                />
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-base-content">Estimated Budget per Person (BDT)</label>
+                    <input 
+                      type="number" 
+                      className="input input-bordered w-full rounded-2xl text-xs"
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                      required
+                    />
+                  </div>
 
-              <div className="flex gap-2 pt-4 border-t border-base-200">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 text-xs font-bold btn btn-sm btn-ghost rounded-xl">Cancel</button>
-                <button type="submit" className="flex-1 text-xs font-bold text-white btn btn-sm btn-primary rounded-xl">Create Group</button>
-              </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-base-content">Max Team Members</label>
+                    <input 
+                      type="number" 
+                      min="2"
+                      max="30"
+                      className="input input-bordered w-full rounded-2xl text-xs"
+                      value={maxMembers}
+                      onChange={(e) => setMaxMembers(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
 
-            </form>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-base-content">Transport Mode</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. AC Bus, Chander Gari, Speedboat"
+                      className="input input-bordered w-full rounded-2xl text-xs"
+                      value={transport}
+                      onChange={(e) => setTransport(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-base-content">Accommodation Plan</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Eco Resort & Tents"
+                      className="input input-bordered w-full rounded-2xl text-xs"
+                      value={accommodation}
+                      onChange={(e) => setAccommodation(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-base-200 flex justify-end gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="btn btn-sm btn-ghost rounded-xl font-bold text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={creatingGroup || !title.trim()}
+                    className="btn btn-sm btn-primary rounded-xl font-black text-xs gap-1.5 shadow"
+                  >
+                    {creatingGroup ? (
+                      <span className="loading loading-spinner loading-xs"></span>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" /> Launch Expedition (+75 pts)
+                      </>
+                    )}
+                  </button>
+                </div>
+
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
+        {/* ========================================================================= */}
+        {/* MODAL 3: PROPOSE ITINERARY ACTIVITY / APPEAL MODAL */}
+        {/* ========================================================================= */}
+        {isAppealModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+            <div className="bg-base-100 border border-base-300 rounded-3xl w-full max-w-lg p-6 md:p-8 space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+              
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider mb-1">
+                    <Lightbulb className="w-3.5 h-3.5" /> Collaborative Proposal
+                  </div>
+                  <h3 className="font-black text-xl text-base-content m-0">
+                    Propose Itinerary Activity / Appeal
+                  </h3>
+                  <p className="text-xs text-base-content/60 mt-1">
+                    Suggest a spot or activity for the trip. The expedition creator will review and approve it into the schedule.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setIsAppealModalOpen(false)}
+                  className="btn btn-ghost btn-sm btn-circle text-base-content/60"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleProposeItinerary} className="space-y-4 text-xs">
+                
+                <div className="space-y-1">
+                  <label className="font-bold text-base-content">Target Trip Day</label>
+                  <select 
+                    className="select select-bordered w-full rounded-2xl text-xs"
+                    value={appealDay}
+                    onChange={(e) => setAppealDay(e.target.value)}
+                  >
+                    {(groupDetails?.itinerary || []).map((d, i) => (
+                      <option key={i} value={d.day || `Day ${i + 1}`}>
+                        {d.day || `Day ${i + 1}`}
+                      </option>
+                    ))}
+                    <option value="custom">➕ Custom / New Day Schedule...</option>
+                  </select>
+                </div>
+
+                {appealDay === "custom" && (
+                  <div className="space-y-1">
+                    <label className="font-bold text-base-content">Custom Day Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Day 4 (Optional Extension) or Evening Bonfire"
+                      className="input input-bordered w-full rounded-2xl text-xs"
+                      value={customAppealDay}
+                      onChange={(e) => setCustomAppealDay(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="font-bold text-base-content">Proposed Activity / Spot Description</label>
+                  <textarea 
+                    rows={3}
+                    placeholder="Describe the activity, timing, and checkpoint (e.g., Sunset watch from Konglak Peak at 5:30 PM followed by traditional bamboo tea at local stalls)..."
+                    className="textarea textarea-bordered w-full rounded-2xl text-xs leading-relaxed"
+                    value={appealActivity}
+                    onChange={(e) => setAppealActivity(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-base-content">Why should we do this? (Reason / Motivation)</label>
+                  <textarea 
+                    rows={2}
+                    placeholder="e.g., Highest peak in Sajek Valley with 360-degree panoramic cloud views; highly recommended by locals."
+                    className="textarea textarea-bordered w-full rounded-2xl text-xs leading-relaxed"
+                    value={appealReason}
+                    onChange={(e) => setAppealReason(e.target.value)}
+                  />
+                </div>
+
+                <div className="pt-3 border-t border-base-200 flex justify-end gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAppealModalOpen(false)}
+                    className="btn btn-sm btn-ghost rounded-xl font-bold text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={submittingAppeal || !appealActivity.trim()}
+                    className="btn btn-sm btn-primary rounded-xl font-black text-xs gap-1.5 shadow"
+                  >
+                    {submittingAppeal ? (
+                      <span className="loading loading-spinner loading-xs"></span>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" /> Submit Appeal (+15 pts)
+                      </>
+                    )}
+                  </button>
+                </div>
+
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODAL 4: ORGANIZER DECLINE REASON MODAL */}
+        {/* ========================================================================= */}
+        {rejectingSuggestion && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+            <div className="bg-base-100 border border-base-300 rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl relative">
+              
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-black text-lg text-base-content m-0">
+                    Decline Itinerary Proposal
+                  </h3>
+                  <p className="text-xs text-base-content/60 mt-1">
+                    Provide a reason so {rejectingSuggestion.userName} understands the decision.
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setRejectingSuggestion(null)}
+                  className="btn btn-ghost btn-sm btn-circle text-base-content/60"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-3 bg-base-200/50 rounded-2xl text-xs space-y-1">
+                <span className="font-bold text-base-content block">{rejectingSuggestion.userName}'s suggestion for {rejectingSuggestion.day}:</span>
+                <p className="text-base-content/70 m-0 line-clamp-2 italic">"{rejectingSuggestion.activityPlan}"</p>
+              </div>
+
+              <form onSubmit={handleRejectSuggestionSubmit} className="space-y-4 text-xs">
+                
+                <div className="space-y-1.5">
+                  <label className="font-bold text-base-content">Reason for Declining</label>
+                  <textarea 
+                    rows={3}
+                    placeholder="e.g. Schedule for Day 2 is already packed, or location is outside our planned route..."
+                    className="textarea textarea-bordered w-full rounded-2xl text-xs"
+                    value={rejectionReasonText}
+                    onChange={(e) => setRejectionReasonText(e.target.value)}
+                    required
+                  />
+
+                  {/* Quick Reason Suggestions */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[
+                      "Schedule already packed",
+                      "Too far from accommodation route",
+                      "Exceeds estimated budget",
+                      "Weather / safety considerations"
+                    ].map((chip, i) => (
+                      <button 
+                        key={i} 
+                        type="button" 
+                        onClick={() => setRejectionReasonText(chip)}
+                        className="badge badge-ghost hover:badge-primary text-[10px] font-semibold cursor-pointer transition-all"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-base-200 flex justify-end gap-2">
+                  <button 
+                    type="button"
+                    onClick={() => setRejectingSuggestion(null)}
+                    className="btn btn-sm btn-ghost rounded-xl font-bold text-xs"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={submittingRejection || !rejectionReasonText.trim()}
+                    className="btn btn-sm btn-error text-white rounded-xl font-black text-xs gap-1"
+                  >
+                    {submittingRejection ? (
+                      <span className="loading loading-spinner loading-xs"></span>
+                    ) : (
+                      "Confirm Decline"
+                    )}
+                  </button>
+                </div>
+
+              </form>
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

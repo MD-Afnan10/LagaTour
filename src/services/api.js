@@ -891,6 +891,182 @@ export const api = {
   async getConnectedTravelers(userId) {
     const res = await fetch(`${API_BASE_URL}/users/${userId}/connected-travelers`);
     return await handleResponse(res);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GROUP PLANNER / EXPEDITIONS API
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Fetch all group expeditions from MySQL
+   */
+  async fetchGroups(params = {}) {
+    const query = new URLSearchParams();
+    if (params.userId) query.append("userId", params.userId);
+    if (params.destination && params.destination !== "All") query.append("destination", params.destination);
+    if (params.status && params.status !== "all") query.append("status", params.status);
+
+    const url = `${API_BASE_URL}/groups${query.toString() ? `?${query.toString()}` : ""}`;
+    const res = await fetch(url);
+    const data = await handleResponse(res);
+    return data.groups || [];
+  },
+
+  /**
+   * Fetch full details of an expedition group (workspace, checklist, expenses, members, chat info)
+   */
+  async fetchGroupDetails(groupId, userId = null) {
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}${query}`);
+    const data = await handleResponse(res);
+    return data.group || null;
+  },
+
+  /**
+   * Create a new group expedition (auto-creates linked group chat in conversations)
+   */
+  async createGroupExpedition(groupData) {
+    const res = await fetch(`${API_BASE_URL}/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(groupData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Send a join request to an expedition group
+   */
+  async joinGroupExpedition(groupId, userData) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user: userData })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Withdraw / Cancel a pending join request
+   */
+  async withdrawJoinRequest(groupId, userId) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/join?userId=${encodeURIComponent(userId)}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Organizer accepts or rejects join request (accepting automatically adds user to group chat)
+   */
+  async respondToJoinRequest(groupId, targetUserId, status, organizerId = null) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/members/${targetUserId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, organizerId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Add a collaborative task to expedition checklist
+   */
+  async addGroupChecklistTask(groupId, taskData) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/checklist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(taskData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Toggle task completion status
+   */
+  async toggleGroupChecklistTask(groupId, taskId, completed) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/checklist/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completed })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete checklist task
+   */
+  async deleteGroupChecklistTask(groupId, taskId) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/checklist/${taskId}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Log a shared group expense
+   */
+  async addGroupExpense(groupId, expenseData) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/expenses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(expenseData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete expense record
+   */
+  async deleteGroupExpense(groupId, expenseId) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/expenses/${expenseId}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete / Cancel expedition
+   */
+  async deleteGroupExpedition(groupId, userId = null) {
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}${query}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Propose an itinerary appeal / activity suggestion
+   */
+  async addItinerarySuggestion(groupId, suggestionData) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/itinerary-suggestions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(suggestionData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Creator reviews itinerary suggestion (accept / reject with optional reason)
+   */
+  async respondToItinerarySuggestion(groupId, suggestionId, status, rejectionReason = "", organizerId = null) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/itinerary-suggestions/${suggestionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, rejectionReason, organizerId })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Withdraw / Delete an itinerary suggestion
+   */
+  async deleteItinerarySuggestion(groupId, suggestionId) {
+    const res = await fetch(`${API_BASE_URL}/groups/${groupId}/itinerary-suggestions/${suggestionId}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
   }
 };
 
