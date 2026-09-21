@@ -84,14 +84,21 @@ export async function initDatabase() {
     try {
       await p.query("ALTER TABLE `users` MODIFY `profile_picture_url` LONGTEXT NULL;");
       await p.query("ALTER TABLE `post_media` MODIFY `media_url` LONGTEXT NULL;");
+      await p.query("ALTER TABLE `reports` MODIFY `user_id` VARCHAR(255) NULL;");
     } catch (colErr) {
-      // Ignored if already longtext
+      // Ignored if already longtext or null
     }
 
     // Ensure password_hash column exists if table existed previously without it
     const [pwdCol] = await p.query("SHOW COLUMNS FROM users LIKE 'password_hash'");
     if (pwdCol.length === 0) {
       await p.query("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL AFTER email");
+    }
+
+    // Ensure role column exists for administrative authorization
+    const [roleCol] = await p.query("SHOW COLUMNS FROM users LIKE 'role'");
+    if (roleCol.length === 0) {
+      await p.query("ALTER TABLE users ADD COLUMN role ENUM('user', 'moderator', 'admin', 'superadmin') DEFAULT 'user' AFTER email");
     }
 
     // 3. Create Email Verifications table for OTP codes
@@ -208,13 +215,31 @@ export async function initDatabase() {
         \`report_id\` varchar(255) NOT NULL,
         \`post_id\` varchar(255) DEFAULT NULL,
         \`place_id\` varchar(255) DEFAULT NULL,
+        \`reported_user_id\` varchar(255) DEFAULT NULL,
         \`user_id\` varchar(255) NOT NULL,
         \`report_type\` varchar(50) NOT NULL DEFAULT 'post',
         \`report_description\` text NOT NULL,
+        \`status\` enum('pending','reviewed','dismissed','action_taken') DEFAULT 'pending',
+        \`action_taken\` varchar(255) DEFAULT NULL,
         \`created_at\` datetime DEFAULT current_timestamp(),
         PRIMARY KEY (\`report_id\`),
         KEY \`fk_report_user\` (\`user_id\`),
         CONSTRAINT \`fk_report_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    // 9b. Create System Announcements table (for Admin Broadcasts)
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`system_announcements\` (
+        \`announcement_id\` varchar(255) NOT NULL,
+        \`title\` varchar(255) DEFAULT NULL,
+        \`message\` text NOT NULL,
+        \`priority\` enum('info','warning','error','success') DEFAULT 'info',
+        \`is_banner\` tinyint(1) DEFAULT 0,
+        \`is_active\` tinyint(1) DEFAULT 1,
+        \`created_by\` varchar(255) DEFAULT NULL,
+        \`created_at\` datetime DEFAULT current_timestamp(),
+        PRIMARY KEY (\`announcement_id\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -291,6 +316,31 @@ export async function initDatabase() {
     } catch (colErr) {
       // Column already exists - ignore
     }
+    try {
+      await p.query(`ALTER TABLE \`conversations\` MODIFY \`type\` VARCHAR(50) NOT NULL DEFAULT 'direct';`);
+    } catch (colErr) {
+      // ignore
+    }
+
+    // 12b. Table structure for admin_support_chats
+    await p.query(`
+      CREATE TABLE IF NOT EXISTS \`admin_support_chats\` (
+        \`request_id\` VARCHAR(255) NOT NULL,
+        \`user_id\` VARCHAR(255) NOT NULL,
+        \`conversation_id\` VARCHAR(255) NOT NULL,
+        \`status\` ENUM('pending', 'accepted', 'resolved') NOT NULL DEFAULT 'pending',
+        \`accepted_by\` VARCHAR(255) DEFAULT NULL,
+        \`accepted_by_name\` VARCHAR(255) DEFAULT NULL,
+        \`accepted_at\` DATETIME DEFAULT NULL,
+        \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`request_id\`),
+        UNIQUE KEY \`unique_support_conv\` (\`conversation_id\`),
+        KEY \`fk_support_user\` (\`user_id\`),
+        CONSTRAINT \`fk_support_user\` FOREIGN KEY (\`user_id\`) REFERENCES \`users\` (\`user_id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT \`fk_support_conv\` FOREIGN KEY (\`conversation_id\`) REFERENCES \`conversations\` (\`conversation_id\`) ON DELETE CASCADE ON UPDATE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
 
     // 13. Create Divisions table
     await p.query(`
@@ -380,6 +430,15 @@ export async function initDatabase() {
       
       const [repTypeCols] = await p.query("SHOW COLUMNS FROM reports LIKE 'report_type'");
       if (repTypeCols.length === 0) await p.query("ALTER TABLE reports ADD COLUMN report_type varchar(50) DEFAULT 'post'");
+
+      const [repUserCols] = await p.query("SHOW COLUMNS FROM reports LIKE 'reported_user_id'");
+      if (repUserCols.length === 0) await p.query("ALTER TABLE reports ADD COLUMN reported_user_id varchar(255) NULL AFTER user_id");
+
+      const [repStatusCols] = await p.query("SHOW COLUMNS FROM reports LIKE 'status'");
+      if (repStatusCols.length === 0) await p.query("ALTER TABLE reports ADD COLUMN status enum('pending','reviewed','dismissed','action_taken') DEFAULT 'pending'");
+
+      const [repActionCols] = await p.query("SHOW COLUMNS FROM reports LIKE 'action_taken'");
+      if (repActionCols.length === 0) await p.query("ALTER TABLE reports ADD COLUMN action_taken varchar(255) NULL");
     } catch (e) {
       // safe fallback
     }
@@ -753,10 +812,11 @@ async function seedInitialData(p) {
   try {
     // Guarantee admin user exists in MySQL database
     await p.query(`
-      INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count)
-      VALUES ('admin_root', 'admin@laga.tour', ?, 'admin_root', 'System', 'Admin', 'https://api.dicebear.com/7.x/adventurer/svg?seed=admin', 'LagaTour System Administrator', 'Bangladesh', 'Dhaka', '+8801500000000', 'Solo', 9999, 10000, 50)
+      INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, phone, preferred_travel_type, league_points, followers_count, following_count, role)
+      VALUES ('admin_root', 'admin@laga.tour', ?, 'admin_root', 'System', 'Admin', 'https://api.dicebear.com/7.x/adventurer/svg?seed=admin', 'LagaTour System Administrator', 'Bangladesh', 'Dhaka', '+8801500000000', 'Solo', 9999, 10000, 50, 'superadmin')
       ON DUPLICATE KEY UPDATE 
-        password_hash = COALESCE(users.password_hash, VALUES(password_hash))
+        password_hash = COALESCE(users.password_hash, VALUES(password_hash)),
+        role = 'superadmin'
     `, [adminPasswordHash]);
   } catch (cleanErr) {
     // Non-fatal if tables are already empty
@@ -865,24 +925,22 @@ async function seedInitialData(p) {
     );
   }
 
-  // 3. Seed Community Travelers if user count is low
-  const [userCount] = await p.query("SELECT COUNT(*) as count FROM users WHERE user_id != 'admin_root'");
-  if (userCount[0].count < 3) {
-    console.log("🌱 Seeding top ranking community travelers into lagatour_db...");
-    const samplePasswordHash = await bcrypt.hash("traveler123", 10);
-    
-    await p.query(`
-      INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, preferred_travel_type, total_trips_shared, league_points, followers_count, following_count, is_verified, account_status)
-      VALUES
-        ('user_tariq', 'tariqul@laga.tour', ?, 'tariq_adventures', 'Tariqul', 'Islam', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400', 'Bandarban & Sajek mountaineering leader. Exploring the high peaks of Bangladesh.', 'Bangladesh', 'Bandarban', 'Group', 38, 4850, 12400, 180, 1, 'active'),
-        ('user_nusrat', 'nusrat@laga.tour', ?, 'nusrat_trails', 'Nusrat', 'Jahan', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400', 'Sylhet rainforest explorer, tea garden backpacker, and wildlife photographer.', 'Bangladesh', 'Sylhet', 'Friends', 26, 3420, 8900, 240, 1, 'active'),
-        ('user_siam', 'siam@laga.tour', ?, 'siam_nomad', 'Siam', 'Ahmed', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400', 'Coastal tracker, scuba diver, and St. Martin Island local guide.', 'Bangladesh', 'Cox\\'s Bazar', 'Solo', 19, 2890, 7200, 310, 1, 'active'),
-        ('user_tanvir', 'tanvir@laga.tour', ?, 'tanvir_heritage', 'Tanvir', 'Hossain', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400', 'Heritage and historical architecture specialist across Bagerhat & Rajshahi.', 'Bangladesh', 'Rajshahi', 'Family', 15, 1750, 4300, 150, 1, 'active'),
-        ('user_farhana', 'farhana@laga.tour', ?, 'farhana_wander', 'Farhana', 'Yasmin', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400', 'Mangrove researcher, houseboat traveler, and eco-tourism advocate.', 'Bangladesh', 'Khulna', 'Couple', 10, 890, 2100, 195, 0, 'active'),
-        ('user_nabil', 'nabil@laga.tour', ?, 'nabil_roams', 'Nabil', 'Khan', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400', 'Weekend camper, cycle trekker, and campfire storyteller.', 'Bangladesh', 'Dhaka', 'Friends', 7, 650, 1450, 120, 0, 'active')
-      ON DUPLICATE KEY UPDATE league_points = VALUES(league_points), followers_count = VALUES(followers_count);
-    `, [samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash]);
-  }
+  // 3. Seed Community Travelers
+  const samplePasswordHash = await bcrypt.hash("traveler123", 10);
+  
+  await p.query(`
+    INSERT INTO users (user_id, email, password_hash, username, first_name, last_name, profile_picture_url, bio, country, city, preferred_travel_type, total_trips_shared, league_points, followers_count, following_count, is_verified, account_status)
+    VALUES
+      ('user_tariq', 'tariqul@laga.tour', ?, 'tariq_adventures', 'Tariqul', 'Islam', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400', 'Bandarban & Sajek mountaineering leader. Exploring the high peaks of Bangladesh.', 'Bangladesh', 'Bandarban', 'Group', 38, 4850, 12400, 180, 1, 'active'),
+      ('user_nusrat', 'nusrat@laga.tour', ?, 'nusrat_trails', 'Nusrat', 'Jahan', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400', 'Sylhet rainforest explorer, tea garden backpacker, and wildlife photographer.', 'Bangladesh', 'Sylhet', 'Friends', 26, 3420, 8900, 240, 1, 'active'),
+      ('user_siam', 'siam@laga.tour', ?, 'siam_nomad', 'Siam', 'Ahmed', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400', 'Coastal tracker, scuba diver, and St. Martin Island local guide.', 'Bangladesh', 'Cox\\'s Bazar', 'Solo', 19, 2890, 7200, 310, 1, 'active'),
+      ('user_tanvir', 'tanvir@laga.tour', ?, 'tanvir_heritage', 'Tanvir', 'Hossain', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400', 'Heritage and historical architecture specialist across Bagerhat & Rajshahi.', 'Bangladesh', 'Rajshahi', 'Family', 15, 1750, 4300, 150, 1, 'active'),
+      ('user_farhana', 'farhana@laga.tour', ?, 'farhana_wander', 'Farhana', 'Yasmin', 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400', 'Mangrove researcher, houseboat traveler, and eco-tourism advocate.', 'Bangladesh', 'Khulna', 'Couple', 10, 890, 2100, 195, 0, 'active'),
+      ('user_nabil', 'nabil@laga.tour', ?, 'nabil_roams', 'Nabil', 'Khan', 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400', 'Weekend camper, cycle trekker, and campfire storyteller.', 'Bangladesh', 'Dhaka', 'Friends', 7, 650, 1450, 120, 0, 'active'),
+      ('user_sadia', 'sadia@laga.tour', ?, 'sadia_travels', 'Sadia', 'Rahman', 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400', 'Coastal and adventure tour enthusiast. Cox\\'s Bazar rally leader.', 'Bangladesh', 'Dhaka', 'Group', 22, 3100, 5200, 210, 1, 'active'),
+      ('user_rayan', 'rayan@laga.tour', ?, 'rayan_hikes', 'Rayan', 'Chowdhury', 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400', 'Mountain hiker and peak trekker.', 'Bangladesh', 'Chattogram', 'Friends', 12, 1400, 3100, 140, 1, 'active')
+    ON DUPLICATE KEY UPDATE league_points = VALUES(league_points), followers_count = VALUES(followers_count);
+  `, [samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash, samplePasswordHash]);
 
   // 4. Seed Verified Places & Destinations
   const [placesCount] = await p.query("SELECT COUNT(*) as count FROM places");

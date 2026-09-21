@@ -16,12 +16,10 @@ export default function EditPostModal({
   onClose, 
   onSave 
 }) {
-  if (!isOpen || !post) return null;
-
-  const [caption, setCaption] = useState(post.caption || "");
-  const [image, setImage] = useState(post.image || (post.images && post.images[0]) || "");
-  const [video, setVideo] = useState(post.video || (post.videos && post.videos[0]) || "");
-  const [isPublic, setIsPublic] = useState(post.isPublic !== false && !post.isHidden);
+  const [caption, setCaption] = useState(post?.caption || "");
+  const [image, setImage] = useState(post?.image || (post?.images && post?.images[0]) || "");
+  const [video, setVideo] = useState(post?.video || (post?.videos && post?.videos[0]) || "");
+  const [isPublic, setIsPublic] = useState(post?.isPublic !== false && !post?.isHidden);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -35,6 +33,8 @@ export default function EditPostModal({
       setIsPublic(post.isPublic !== false && !post.isHidden);
     }
   }, [post]);
+
+  if (!isOpen || !post) return null;
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];

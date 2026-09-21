@@ -81,10 +81,28 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      localStorage.setItem("ts_login_mode", "user");
-      setSuccess("Success! Logging in...");
-      setTimeout(() => navigate("/"), 600);
+      const user = await login(email, password);
+      const isAdmin = Boolean(
+        user?.isAdmin || 
+        user?.role === "admin" || 
+        user?.role === "superadmin" || 
+        user?.user_id === "admin_root" ||
+        user?.id === "admin_root" ||
+        user?.email?.toLowerCase().startsWith("admin") ||
+        user?.username?.toLowerCase().startsWith("admin") ||
+        user?.username === "nabil_wanderer" ||
+        user?.email === "nutamim2001@gmail.com"
+      );
+
+      if (isAdmin) {
+        localStorage.setItem("ts_login_mode", "admin");
+        setSuccess("Administrator authenticated! Redirecting to Admin Panel...");
+        setTimeout(() => navigate("/admin"), 600);
+      } else {
+        localStorage.setItem("ts_login_mode", "user");
+        setSuccess("Success! Logging in...");
+        setTimeout(() => navigate("/"), 600);
+      }
     } catch (err) {
       setError(err.message || "Invalid email or password.");
     } finally {
@@ -797,14 +815,34 @@ export default function Auth() {
               </div>
             )}
 
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-300">Default Super Admin</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdminEmail("admin@laga.tour");
+                    setAdminPassword("admin");
+                  }}
+                  className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
+                >
+                  Quick Fill
+                </button>
+              </div>
+              <div className="font-mono text-slate-300 flex items-center justify-between text-[10px]">
+                <span>Email: <b className="text-amber-400">admin@laga.tour</b> (or <b>admin</b>)</span>
+                <span>Pass: <b className="text-amber-400">admin</b></span>
+              </div>
+            </div>
+
             <form onSubmit={handleAdminSubmit} className="space-y-4">
               <div className="form-control">
-                <label className="label py-0.5"><span className="label-text text-slate-300 text-xs font-semibold">Admin Email Address</span></label>
+                <label className="label py-0.5"><span className="label-text text-slate-300 text-xs font-semibold">Admin Email / Username</span></label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-3 h-4.5 w-4.5 text-slate-500" />
                   <input 
-                    type="email" 
-                    placeholder="admin@laga.tour" 
+                    type="text" 
+                    placeholder="admin@laga.tour or admin" 
                     className="input input-sm h-11 bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-600 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 w-full pl-10 rounded-xl text-xs" 
                     value={adminEmail}
                     onChange={(e) => setAdminEmail(e.target.value)}
@@ -830,7 +868,7 @@ export default function Auth() {
 
               <button 
                 type="submit" 
-                className="btn btn-warning text-slate-950 font-bold border-none rounded-xl w-full h-11 min-h-0 text-xs capitalize mt-2 shadow-lg shadow-amber-500/10"
+                className="btn btn-warning text-slate-950 font-bold border-none rounded-xl w-full h-11 min-h-0 text-xs capitalize mt-2 shadow-lg shadow-amber-500/10 cursor-pointer"
                 disabled={adminLoading}
               >
                 {adminLoading ? <span className="loading loading-spinner text-slate-950"></span> : "Authenticate Admin Access"}

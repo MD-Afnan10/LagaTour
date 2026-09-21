@@ -2,22 +2,17 @@ import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { 
-  Bell, 
-  MapPin, 
-  Compass, 
-  Landmark,
-  Map, 
-  Users, 
   ShieldAlert, 
   LogOut, 
   Sun, 
   Moon,
-  Trophy,
   Send,
-  AlertTriangle,
   Radio,
   X,
-  MessageSquare
+  ExternalLink,
+  Users,
+  FileText,
+  Headphones
 } from "lucide-react";
 
 export default function AdminNavbar() {
@@ -82,12 +77,33 @@ export default function AdminNavbar() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h8m-8 6h16" />
               </svg>
             </div>
-            <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[100] p-2 shadow bg-slate-800 rounded-box w-52 border border-slate-700">
-              <li><Link to="/" className="text-slate-200 hover:text-white font-medium"><Compass className="w-4 h-4 text-error" /> Feed Moderation</Link></li>
-              <li><Link to="/places" className="text-slate-200 hover:text-white font-medium"><Landmark className="w-4 h-4 text-error" /> Places</Link></li>
-              <li><Link to="/plans" className="text-slate-200 hover:text-white font-medium"><Map className="w-4 h-4 text-error" /> Plan Audits</Link></li>
-              <li><Link to="/rankings" className="text-slate-200 hover:text-white font-medium"><Trophy className="w-4 h-4 text-warning" /> User Bans</Link></li>
-              <li><Link to="/admin" className="text-slate-200 hover:text-white font-medium"><ShieldAlert className="w-4 h-4 text-error" /> Admin Portal</Link></li>
+            <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[100] p-2 shadow bg-slate-800 rounded-box w-56 border border-slate-700">
+              <li>
+                <Link to="/admin" className="text-slate-200 hover:text-white font-medium flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-error" /> Admin Portal
+                </Link>
+              </li>
+              <li>
+                <Link to="/admin/users" className="text-slate-200 hover:text-white font-medium flex items-center gap-2">
+                  <Users className="w-4 h-4 text-primary" /> Manage Users
+                </Link>
+              </li>
+              <li>
+                <Link to="/admin/posts" className="text-slate-200 hover:text-white font-medium flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-secondary" /> Manage Posts
+                </Link>
+              </li>
+              <li>
+                <Link to="/admin/chats" className="text-slate-200 hover:text-white font-medium flex items-center gap-2">
+                  <Headphones className="w-4 h-4 text-emerald-400" /> Support Chat
+                </Link>
+              </li>
+              <li className="border-t border-slate-700 my-1"></li>
+              <li>
+                <Link to="/" className="text-slate-300 hover:text-white font-medium flex items-center gap-2">
+                  <ExternalLink className="w-4 h-4 text-slate-400" /> View Live Site
+                </Link>
+              </li>
             </ul>
           </div>
           
@@ -99,13 +115,45 @@ export default function AdminNavbar() {
           </Link>
         </div>
 
-        {/* Navbar Center - Desktop Links */}
+        {/* Navbar Center - Portal Navigation Tabs */}
         <div className="navbar-center hidden lg:flex">
-          <div className="flex gap-1 bg-slate-800/50 p-1.5 rounded-2xl border border-slate-700">
-            <Link to="/" className={`btn btn-sm rounded-xl font-bold ${isActive("/")}`}>Feed</Link>
-            <Link to="/plans" className={`btn btn-sm rounded-xl font-bold ${isActive("/plans")}`}>Plans</Link>
-            <Link to="/rankings" className={`btn btn-sm rounded-xl font-bold ${isActive("/rankings")}`}>Users</Link>
-            <Link to="/admin" className={`btn btn-sm rounded-xl font-bold ${isActive("/admin")}`}>Portal</Link>
+          <div className="flex items-center gap-1.5 bg-slate-800/60 p-1 rounded-2xl border border-slate-700">
+            <Link 
+              to="/admin" 
+              className={`btn btn-sm rounded-xl font-bold flex items-center gap-1.5 ${isActive("/admin")}`}
+            >
+              <ShieldAlert className="w-4 h-4" />
+              Portal
+            </Link>
+            <Link 
+              to="/admin/users" 
+              className={`btn btn-sm rounded-xl font-bold flex items-center gap-1.5 ${isActive("/admin/users")}`}
+            >
+              <Users className="w-4 h-4 text-primary" />
+              Travelers & Users
+            </Link>
+            <Link 
+              to="/admin/posts" 
+              className={`btn btn-sm rounded-xl font-bold flex items-center gap-1.5 ${isActive("/admin/posts")}`}
+            >
+              <FileText className="w-4 h-4 text-secondary" />
+              Posts & Content
+            </Link>
+            <Link 
+              to="/admin/chats" 
+              className={`btn btn-sm rounded-xl font-bold flex items-center gap-1.5 ${isActive("/admin/chats")}`}
+            >
+              <Headphones className="w-4 h-4 text-emerald-400" />
+              Support Chat
+            </Link>
+            <Link 
+              to="/" 
+              className="btn btn-sm btn-ghost text-slate-300 hover:text-white rounded-xl font-medium flex items-center gap-1.5 ml-1"
+              title="Open live public application"
+            >
+              <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              Live Site
+            </Link>
           </div>
         </div>
 
@@ -138,7 +186,8 @@ export default function AdminNavbar() {
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono mt-1">{currentUser.email}</div>
               </li>
-              <li><Link to="/admin" className="text-white hover:bg-slate-700"><ShieldAlert className="w-4 h-4 text-error" /> Admin Settings</Link></li>
+              <li><Link to="/admin" className="text-white hover:bg-slate-700"><ShieldAlert className="w-4 h-4 text-error" /> Admin Portal</Link></li>
+              <li><Link to="/" className="text-slate-300 hover:text-white hover:bg-slate-700"><ExternalLink className="w-4 h-4 text-slate-400" /> View Live Site</Link></li>
               <li>
                 <button onClick={handleLogout} className="text-error font-bold hover:bg-error hover:text-white mt-1">
                   <LogOut className="w-4 h-4" /> Log out

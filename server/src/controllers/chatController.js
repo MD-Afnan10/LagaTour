@@ -246,7 +246,7 @@ export async function getMessages(req, res) {
     const off = parseInt(offset, 10) || 0;
 
     const messagesRaw = await query(
-      `SELECT m.*, u.username, u.first_name, u.last_name, u.profile_picture_url
+      `SELECT m.*, u.username, u.first_name, u.last_name, u.profile_picture_url, u.role AS sender_role
        FROM messages m
        LEFT JOIN users u ON m.sender_id = u.user_id
        WHERE m.conversation_id = ?
@@ -259,6 +259,7 @@ export async function getMessages(req, res) {
       id: m.message_id,
       conversationId: m.conversation_id,
       senderId: m.sender_id,
+      senderRole: m.sender_role || (m.sender_id?.startsWith("admin") ? "admin" : "user"),
       senderName:
         [m.first_name, m.last_name].filter(Boolean).join(" ") ||
         m.username ||
@@ -554,6 +555,7 @@ export async function sendMessage(req, res) {
     ).catch(() => {});
 
     const senderName = userPayload.name || userPayload.first_name || userPayload.username || "Traveler";
+    const senderRole = userPayload.role || (senderId.startsWith("admin") ? "admin" : "user");
     const senderAvatar =
       userPayload.avatar ||
       userPayload.profile_picture_url ||
@@ -564,6 +566,7 @@ export async function sendMessage(req, res) {
       id: messageId,
       conversationId,
       senderId,
+      senderRole,
       senderName,
       senderAvatar,
       avatar: senderAvatar,

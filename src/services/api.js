@@ -1067,11 +1067,320 @@ export const api = {
       method: "DELETE"
     });
     return await handleResponse(res);
+  },
+
+  // ===================== ADMIN PANEL ENDPOINTS =====================
+
+  /**
+   * Get Admin Overview & system-wide metrics from MySQL
+   */
+  async getAdminOverview() {
+    const res = await fetch(`${API_BASE_URL}/admin/overview`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch all users for Admin management
+   */
+  async getAdminUsers(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE_URL}/admin/users${query ? `?${query}` : ""}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Create a new user account directly in MySQL
+   */
+  async createAdminUser(userData) {
+    const res = await fetch(`${API_BASE_URL}/admin/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Update an existing user in MySQL
+   */
+  async updateAdminUser(id, userData) {
+    const res = await fetch(`${API_BASE_URL}/admin/users/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Change user account status (active / suspended)
+   */
+  async toggleUserStatus(id, status) {
+    const res = await fetch(`${API_BASE_URL}/admin/users/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete user permanently from MySQL
+   */
+  async deleteAdminUser(id) {
+    const res = await fetch(`${API_BASE_URL}/admin/users/${id}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Send an administrative warning to a user
+   */
+  async warnAdminUser(id, warningMessage, reason) {
+    const res = await fetch(`${API_BASE_URL}/admin/users/${id}/warn`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ warningMessage, reason })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch all posts for admin moderation
+   */
+  async getAdminPosts(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE_URL}/admin/posts${query ? `?${query}` : ""}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Create a post/announcement as administrator
+   */
+  async createAdminPost(postData) {
+    const res = await fetch(`${API_BASE_URL}/admin/posts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(postData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Update an existing post as administrator
+   */
+  async updateAdminPost(id, postData) {
+    const res = await fetch(`${API_BASE_URL}/admin/posts/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(postData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Toggle post visibility (public vs hidden)
+   */
+  async togglePostVisibility(id, isPublic) {
+    const res = await fetch(`${API_BASE_URL}/admin/posts/${id}/visibility`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isPublic })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Update AI media verification status
+   */
+  async verifyPostMedia(postId, mediaId, status, adminNotes = "") {
+    const res = await fetch(`${API_BASE_URL}/admin/posts/${postId}/media/${mediaId}/verify`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, adminNotes })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete post by administrator
+   */
+  async deletePostByAdmin(id) {
+    const res = await fetch(`${API_BASE_URL}/admin/posts/${id}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch tour plans for admin auditing
+   */
+  async getAdminTourPlans(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE_URL}/admin/tour-plans${query ? `?${query}` : ""}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete tour plan by administrator
+   */
+  async deleteTourPlanByAdmin(id) {
+    const res = await fetch(`${API_BASE_URL}/admin/tour-plans/${id}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch places from MySQL
+   */
+  async getAdminPlaces(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    const res = await fetch(`${API_BASE_URL}/admin/places${query ? `?${query}` : ""}`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Create a new tourist destination in MySQL
+   */
+  async createAdminPlace(placeData) {
+    const res = await fetch(`${API_BASE_URL}/admin/places`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(placeData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Update an existing place in MySQL
+   */
+  async updateAdminPlace(id, placeData) {
+    const res = await fetch(`${API_BASE_URL}/admin/places/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(placeData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Delete destination from MySQL
+   */
+  async deleteAdminPlace(id) {
+    const res = await fetch(`${API_BASE_URL}/admin/places/${id}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Submit a user or post report
+   */
+  async createReport(reportData) {
+    const res = await fetch(`${API_BASE_URL}/reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reportData)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch user and content reports
+   */
+  async getAdminReports() {
+    const res = await fetch(`${API_BASE_URL}/admin/reports`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Dismiss a report
+   */
+  async dismissAdminReport(id) {
+    const res = await fetch(`${API_BASE_URL}/admin/reports/${id}`, {
+      method: "DELETE"
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Resolve a report with specific administrative action
+   */
+  async resolveAdminReport(id, action, notes) {
+    const res = await fetch(`${API_BASE_URL}/admin/reports/${id}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, notes })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Request support with an admin (traveler side)
+   */
+  async requestAdminSupport(userPayload) {
+    const res = await fetch(`${API_BASE_URL}/admin/support/request`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(userPayload)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Fetch all active & pending support requests (admin side)
+   */
+  async getAdminSupportRequests() {
+    const res = await fetch(`${API_BASE_URL}/admin/support/requests`);
+    return await handleResponse(res);
+  },
+
+  /**
+   * Admin accepts a traveler's support request
+   */
+  async acceptAdminSupportRequest(requestId, adminPayload = {}) {
+    const res = await fetch(`${API_BASE_URL}/admin/support/${requestId}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adminPayload)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Admin resolves a support request
+   */
+  async resolveAdminSupportRequest(requestId, adminPayload = {}) {
+    const res = await fetch(`${API_BASE_URL}/admin/support/${requestId}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(adminPayload)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Create system broadcast / banner announcement
+   */
+  async createSystemAnnouncement(data) {
+    const res = await fetch(`${API_BASE_URL}/admin/announcements`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+    return await handleResponse(res);
+  },
+
+  /**
+   * Get active system announcements
+   */
+  async getActiveAnnouncements() {
+    const res = await fetch(`${API_BASE_URL}/admin/announcements`);
+    return await handleResponse(res);
   }
 };
 
 export default api;
-
-
-
 

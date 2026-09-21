@@ -711,8 +711,11 @@ export async function updatePostVisibility(req, res) {
 export async function dismissReport(req, res) {
   try {
     const reportId = req.params.id;
-    await query(`DELETE FROM reports WHERE report_id = ?`, [reportId]);
-    res.json({ success: true, message: "Report dismissed successfully." });
+    await query(
+      `UPDATE reports SET status = 'dismissed', action_taken = 'Dismissed by administrator' WHERE report_id = ?`,
+      [reportId]
+    );
+    res.json({ success: true, message: "Report dismissed and archived successfully." });
   } catch (error) {
     console.error("Error in dismissReport:", error);
     res.status(500).json({ success: false, message: error.message });
