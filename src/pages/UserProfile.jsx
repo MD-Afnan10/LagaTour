@@ -11,6 +11,7 @@ import DeletePostModal from "../components/modals/DeletePostModal";
 import AddPlaceLocationModal from "../components/modals/AddPlaceLocationModal";
 import EditMyPlaceModal from "../components/modals/EditMyPlaceModal";
 import FollowersModal from "../components/modals/FollowersModal";
+import ReportUserModal from "../components/modals/ReportUserModal";
 import { 
   User, 
   MapPin, 
@@ -42,12 +43,13 @@ import {
   ShieldAlert,
   Sparkles,
   Share2,
-  ChevronRight
+  ChevronRight,
+  Flag
 } from "lucide-react";
 
 export default function UserProfile() {
   const { userId } = useParams();
-  const { currentUser, updateUserProfile, addPoints } = useAuth();
+  const { currentUser, updateUserProfile, addPoints, reportUser, blockedUserIds } = useAuth();
   const { 
     posts, 
     updatePost, 
@@ -126,10 +128,19 @@ export default function UserProfile() {
 
   // Modals state
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState(null);
   const [deletingPostId, setDeletingPostId] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [postActionMsg, setPostActionMsg] = useState("");
+
+  const isUserSuspended = Boolean(
+    blockedUserIds && (
+      blockedUserIds.includes(String(matchedUser?.id)) ||
+      blockedUserIds.includes(String(matchedUser?.user_id)) ||
+      blockedUserIds.includes(String(matchedUser?.username))
+    )
+  );
 
   // My Places State
   const [myPlaces, setMyPlaces] = useState([]);
@@ -336,6 +347,9 @@ export default function UserProfile() {
                 {matchedUser.isAdmin && (
                   <span className="badge badge-sm badge-warning text-slate-950 font-black">Admin</span>
                 )}
+                {isUserSuspended && (
+                  <span className="badge badge-sm badge-error text-white font-black animate-pulse">Account Suspended</span>
+                )}
               </div>
               <p className="text-xs text-base-content/60 font-semibold">@{matchedUser.username}</p>
               
@@ -374,7 +388,7 @@ export default function UserProfile() {
           </div>
 
           {!isSelf ? (
-            <div className="flex gap-2 self-center sm:self-end">
+            <div className="flex flex-wrap gap-2 self-center sm:self-end">
               <button 
                 onClick={handleToggleFollow}
                 className={`btn btn-sm capitalize rounded-xl gap-1.5 font-bold shadow-sm ${
@@ -389,6 +403,13 @@ export default function UserProfile() {
                 className="btn btn-sm btn-outline rounded-xl gap-1.5 font-bold"
               >
                 <MessageSquare className="w-4 h-4 text-primary" /> Message
+              </button>
+              <button 
+                onClick={() => setIsReportModalOpen(true)}
+                className="btn btn-sm btn-outline btn-error rounded-xl gap-1.5 font-bold hover:bg-error hover:text-white transition-all shadow-sm"
+                title="Report this user to administrators"
+              >
+                <Flag className="w-4 h-4" /> Report
               </button>
             </div>
           ) : (
@@ -924,6 +945,19 @@ export default function UserProfile() {
               setFollowingCount(res.followingCount);
             }
           }).catch(() => {});
+        }}
+      />
+
+      {/* Report User to Admins Modal */}
+      <ReportUserModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        targetUser={matchedUser}
+        currentUser={currentUser}
+        onSubmitReport={async (reportData) => {
+          reportUser(reportData);
+          setPostActionMsg("🚩 User report submitted directly to Admins.");
+          setTimeout(() => setPostActionMsg(""), 3500);
         }}
       />
 

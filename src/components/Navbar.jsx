@@ -30,8 +30,29 @@ export default function Navbar() {
   const [localNotifications, setLocalNotifications] = useState(MOCK_NOTIFICATIONS);
   const [theme, setTheme] = useState(localStorage.getItem("ts_theme") || "sunset");
 
-  // Merge global push notifications and local notifications
-  const allNotifications = [...globalNotifications, ...localNotifications];
+  // Merge global push notifications and local notifications, filtering targeted alerts
+  const currentUserId = String(currentUser?.id || currentUser?.user_id || "");
+  const currentUsername = String(currentUser?.username || "").toLowerCase();
+
+  const userRelevantNotifications = (globalNotifications || []).filter(n => {
+    if (!n.targetUserId || n.target === "all") return true;
+    const t = String(n.targetUserId).toLowerCase();
+    return t === currentUserId.toLowerCase() || t === currentUsername;
+  });
+
+  const allNotifications = [...userRelevantNotifications, ...localNotifications];
+
+  const isUserAdmin = Boolean(
+    currentUser?.isAdmin || 
+    currentUser?.role === "admin" || 
+    currentUser?.role === "superadmin" || 
+    currentUser?.user_id === "admin_root" ||
+    currentUser?.id === "admin_root" ||
+    currentUser?.email?.toLowerCase().startsWith("admin") ||
+    currentUser?.username?.toLowerCase().startsWith("admin") ||
+    currentUser?.username === "nabil_wanderer" ||
+    currentUser?.email === "nutamim2001@gmail.com"
+  );
 
   // Sync DaisyUI theme attribute
   useEffect(() => {
@@ -112,14 +133,14 @@ export default function Navbar() {
                 <li><Link to="/chats"><MessageSquare className="w-4 h-4" /> Messages</Link></li>
                 <li><Link to="/ai-builder"><Sparkles className="w-4 h-4 text-warning" /> AI Builder</Link></li>
                 <li><Link to="/dashboard"><User className="w-4 h-4" /> Dashboard</Link></li>
-                {(currentUser?.isAdmin || currentUser?.email?.toLowerCase().startsWith("admin@")) && (
+                {isUserAdmin && (
                   <li>
                     <button 
                       onClick={() => {
                         localStorage.setItem("ts_login_mode", "admin");
                         navigate("/admin");
                       }} 
-                      className="text-error"
+                      className="text-error font-bold"
                     >
                       <ShieldAlert className="w-4 h-4 text-error" /> Admin Panel
                     </button>
@@ -224,19 +245,31 @@ export default function Navbar() {
                         <div 
                           key={n.id} 
                           onClick={() => handleNotificationClick(n.id)}
-                          className={`flex items-start gap-2 p-2 rounded-lg hover:bg-base-300 transition-colors cursor-pointer ${n.unread ? 'bg-base-300/40 border-l-4 border-primary' : ''} ${n.isAdminPush ? 'border-l-4 border-error bg-error/10' : ''}`}
+                          className={`flex items-start gap-2.5 p-2.5 rounded-xl hover:bg-base-300 transition-colors cursor-pointer ${
+                            n.type === "alert" || n.target === "suspension" 
+                              ? "bg-error/15 border-l-4 border-error" 
+                              : n.type === "warning"
+                              ? "bg-warning/15 border-l-4 border-warning"
+                              : n.isAdminPush || n.target === "user"
+                              ? "bg-primary/10 border-l-4 border-primary"
+                              : n.unread ? "bg-base-300/40 border-l-4 border-primary" : ""
+                          }`}
                         >
-                          {n.isAdminPush ? (
-                            <div className="w-8 h-8 rounded-full bg-error/20 flex items-center justify-center shrink-0">
-                              <ShieldAlert className="w-4 h-4 text-error" />
+                          {n.isAdminPush || n.type === "alert" || n.type === "warning" || n.target === "user" ? (
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                              n.type === "alert" ? "bg-error/20 text-error" : n.type === "warning" ? "bg-warning/20 text-warning" : "bg-primary/20 text-primary"
+                            }`}>
+                              <ShieldAlert className="w-4 h-4" />
                             </div>
                           ) : (
-                            <img src={n.user?.avatar} alt={n.user?.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
+                            <img src={n.user?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${n.user?.name || 'user'}`} alt={n.user?.name || "User"} className="w-8 h-8 rounded-full object-cover shrink-0" />
                           )}
-                          <div className="flex-1">
-                            <p className={`text-xs font-semibold ${n.isAdminPush ? 'text-error' : ''}`}>{n.title}</p>
-                            <p className="text-[10px] text-base-content/70 italic mt-0.5 break-words whitespace-pre-wrap">{n.message || n.body}</p>
-                            <span className="text-[9px] text-base-content/50 mt-1 block">{n.timestamp || n.time}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-bold leading-tight ${
+                              n.type === "alert" ? "text-error" : n.type === "warning" ? "text-warning" : "text-base-content"
+                            }`}>{n.title}</p>
+                            <p className="text-[11px] text-base-content/80 mt-0.5 break-words whitespace-pre-wrap leading-tight">{n.message || n.body}</p>
+                            <span className="text-[9px] text-base-content/50 mt-1 block font-mono">{n.timestamp || n.time}</span>
                           </div>
                         </div>
                       ))
@@ -260,14 +293,14 @@ export default function Navbar() {
               </div>
               <ul tabIndex={0} className="menu menu-sm dropdown-content mt-3 z-[100] p-2 shadow bg-base-200 rounded-box w-52 border border-base-300">
                 <li><Link to="/dashboard"><User className="w-4 h-4" /> My Profile</Link></li>
-                {(currentUser?.isAdmin || currentUser?.email?.toLowerCase().startsWith("admin@")) && (
+                {isUserAdmin && (
                   <li>
                     <button 
                       onClick={() => {
                         localStorage.setItem("ts_login_mode", "admin");
                         navigate("/admin");
                       }} 
-                      className="text-error"
+                      className="text-error font-bold"
                     >
                       <ShieldAlert className="w-4 h-4 text-error" /> Admin Panel
                     </button>

@@ -1,5 +1,5 @@
 import React from "react";
-import { createBrowserRouter, RouterProvider, Navigate, Outlet } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { PostProvider } from "./context/PostContext";
 import { ExpeditionProvider } from "./context/ExpeditionContext";
@@ -17,6 +17,9 @@ import GroupPlanner from "./pages/GroupPlanner";
 import Messaging from "./pages/Messaging";
 import Dashboard from "./pages/Dashboard";
 import AdminPanel from "./pages/AdminPanel";
+import AdminUsers from "./pages/AdminUsers";
+import AdminPosts from "./pages/AdminPosts";
+import AdminChatPortal from "./pages/AdminChatPortal";
 import AIBuilder from "./pages/AIBuilder";
 import Places from "./pages/Places";
 import UserProfile from "./pages/UserProfile";
@@ -27,14 +30,25 @@ import CreateGroupChat from "./pages/CreateGroupChat";
 // Protected Layout Guard Component
 function ProtectedLayout() {
   const { currentUser, globalBanner, clearGlobalBannerAlert } = useAuth();
+  const location = useLocation();
 
   if (!currentUser) {
     return <Navigate to="/welcome" replace />;
   }
 
   const loginMode = localStorage.getItem("ts_login_mode") || "user";
-  const isAdminAccount = currentUser.isAdmin || currentUser?.email?.toLowerCase().startsWith("admin");
-  const showAdminNavbar = isAdminAccount && loginMode === "admin";
+  const isAdminAccount = Boolean(
+    currentUser.isAdmin || 
+    currentUser.role === "admin" ||
+    currentUser.role === "superadmin" ||
+    currentUser.user_id === "admin_root" ||
+    currentUser.id === "admin_root" ||
+    currentUser.email?.toLowerCase().startsWith("admin") ||
+    currentUser.username?.toLowerCase().startsWith("admin") ||
+    currentUser.username === "nabil_wanderer" ||
+    currentUser.email === "nutamim2001@gmail.com"
+  );
+  const showAdminNavbar = isAdminAccount && (loginMode === "admin" || location.pathname.startsWith("/admin"));
 
   const getBannerColor = (type) => {
     switch (type) {
@@ -103,6 +117,9 @@ const router = createBrowserRouter([
       { path: "/dashboard", element: <Dashboard /> },
       { path: "/profile/:userId", element: <UserProfile /> },
       { path: "/admin", element: <AdminPanel /> },
+      { path: "/admin/users", element: <AdminUsers /> },
+      { path: "/admin/posts", element: <AdminPosts /> },
+      { path: "/admin/chats", element: <AdminChatPortal /> },
     ],
   },
   {

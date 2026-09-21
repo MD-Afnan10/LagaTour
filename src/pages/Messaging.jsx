@@ -26,7 +26,9 @@ import {
   Pencil, 
   Copy,
   Download,
-  Loader2
+  Loader2,
+  Shield,
+  Headphones
 } from "lucide-react";
 
 /**
@@ -257,6 +259,37 @@ export default function Messaging() {
   const [activeMenuMsgId, setActiveMenuMsgId] = useState(null);
   const [editingMessage, setEditingMessage] = useState(null);
   const [copiedMsgId, setCopiedMsgId] = useState(null);
+  const [isRequestingAdmin, setIsRequestingAdmin] = useState(false);
+
+  const handleChatWithAdmin = async () => {
+    if (!currentUser) return;
+    setIsRequestingAdmin(true);
+    try {
+      const res = await api.requestAdminSupport({
+        userId: currentUserId,
+        name: currentUser.name || currentUser.username,
+        username: currentUser.username,
+        avatar: currentUser.avatar,
+        email: currentUser.email
+      });
+
+      if (res?.success && res.conversationId) {
+        const targetConvId = res.conversationId;
+        try {
+          const freshChats = await api.fetchUserConversations(currentUserId);
+          if (freshChats && freshChats.length > 0) {
+            setChats(deduplicateChats(freshChats, currentUserId));
+          }
+        } catch (e) {}
+
+        setActiveChatId(targetConvId);
+      }
+    } catch (err) {
+      alert("Could not start admin support session: " + err.message);
+    } finally {
+      setIsRequestingAdmin(false);
+    }
+  };
 
   // 1. Initialize Socket.io connection on mount
   useEffect(() => {
@@ -953,15 +986,33 @@ export default function Messaging() {
                 )}
               </div>
 
-              {/* Dedicated Create Group Button */}
-              <button 
-                onClick={() => navigate("/chats/create-group")}
-                className="btn btn-xs btn-primary font-bold text-white rounded-xl gap-1 shadow-sm px-2.5"
-                title="Create a new group chat"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>+ Create Group</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Dedicated Chat with an Admin Button */}
+                <button 
+                  onClick={handleChatWithAdmin}
+                  disabled={isRequestingAdmin}
+                  className="btn btn-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1 shadow-sm px-2 border-none"
+                  title="Connect with an administrator for live support"
+                >
+                  {isRequestingAdmin ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Shield className="w-3 h-3 text-emerald-200" />
+                  )}
+                  <span className="hidden sm:inline">Admin Support</span>
+                  <span className="sm:hidden">Admin</span>
+                </button>
+
+                {/* Dedicated Create Group Button */}
+                <button 
+                  onClick={() => navigate("/chats/create-group")}
+                  className="btn btn-xs btn-primary font-bold text-white rounded-xl gap-1 shadow-sm px-2"
+                  title="Create a new group chat"
+                >
+                  <UserPlus className="w-3 h-3" />
+                  <span>+ Group</span>
+                </button>
+              </div>
             </div>
 
             {/* Universal Search Box */}
@@ -1405,11 +1456,17 @@ export default function Messaging() {
                           </div>
                         </div>
 
-                        {activeChat.isGroup && !isMe && msg.senderName && (
+                        {!isMe && (msg.senderRole === "admin" || msg.senderRole === "superadmin" || msg.senderId?.startsWith("admin")) ? (
+                          <div className="chat-header text-[10px] font-bold mb-0.5 flex items-center gap-1">
+                            <span className="badge badge-xs bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 font-bold gap-1 py-0.5 px-1.5 shadow-xs">
+                              <Shield className="w-2.5 h-2.5 text-emerald-400" /> [Admin] {msg.senderName || "Administrator"}
+                            </span>
+                          </div>
+                        ) : activeChat.isGroup && !isMe && msg.senderName ? (
                           <div className="chat-header text-[10px] text-base-content/60 font-bold mb-0.5">
                             {msg.senderName}
                           </div>
-                        )}
+                        ) : null}
 
                         <div className={`chat-bubble text-xs shadow-sm leading-relaxed ${
                           msg.mediaUrl && !msg.text ? 'p-1.5' : 'p-3'

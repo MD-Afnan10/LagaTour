@@ -34,8 +34,11 @@ router.post("/posts/:id/save", toggleSave);
 router.post("/posts/:id/share", sharePost);
 router.post("/posts/:id/report", reportPost);
 
+import { createReport } from "../controllers/adminController.js";
+
 // Report Moderation Routes
 router.get("/reports", getReports);
+router.post("/reports", createReport);
 router.delete("/reports/:id", dismissReport);
 
 export default router;

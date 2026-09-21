@@ -11,6 +11,7 @@ import rankingRoutes from "./routes/rankingRoutes.js";
 import tourPlanRoutes from "./routes/tourPlanRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import groupRoutes from "./routes/groupRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 import { initSocket } from "./services/socketService.js";
 
 dotenv.config();
@@ -52,6 +53,7 @@ app.use("/api/rankings", rankingRoutes);
 app.use("/api/tour-plans", tourPlanRoutes);
 app.use("/api/expeditions", tourPlanRoutes);
 app.use("/api/groups", groupRoutes);
+app.use("/api/admin", adminRoutes);
 
 
 
