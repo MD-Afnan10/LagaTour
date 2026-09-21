@@ -273,9 +273,6 @@ export function AuthProvider({ children }) {
         };
         setCurrentUser(userWithAdmin);
         localStorage.setItem("ts_current_user", JSON.stringify(userWithAdmin));
-        if (isAdmin) {
-          localStorage.setItem("ts_login_mode", "admin");
-        }
         return userWithAdmin;
       }
     } catch (backendErr) {
@@ -310,7 +307,6 @@ export function AuthProvider({ children }) {
       };
       setCurrentUser(adminUser);
       localStorage.setItem("ts_current_user", JSON.stringify(adminUser));
-      localStorage.setItem("ts_login_mode", "admin");
       return adminUser;
     }
 

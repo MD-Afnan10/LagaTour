@@ -48,7 +48,7 @@ function ProtectedLayout() {
     currentUser.username === "nabil_wanderer" ||
     currentUser.email === "nutamim2001@gmail.com"
   );
-  const showAdminNavbar = isAdminAccount && (loginMode === "admin" || location.pathname.startsWith("/admin"));
+  const showAdminNavbar = isAdminAccount && location.pathname.startsWith("/admin");
 
   const getBannerColor = (type) => {
     switch (type) {
