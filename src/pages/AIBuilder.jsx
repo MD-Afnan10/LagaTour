@@ -34,7 +34,7 @@ import confetti from "canvas-confetti";
 const POPULAR_DESTINATIONS = [
   // 8 Divisions
   "Dhaka (Division)",
-  "Chattagram (Division)",
+  "Chattogram (Division)",
   "Sylhet (Division)",
   "Rangpur (Division)",
   "Barishal (Division)",
@@ -362,7 +362,7 @@ export default function AIBuilder() {
                 
                 {/* Quick Selection Pills */}
                 <div className="flex flex-wrap gap-1 pt-1.5">
-                  {["Dhaka", "Chattagram", "Sylhet", "Cox's Bazar", "Sajek Valley"].map((quickDest) => (
+                  {["Dhaka", "Chattogram", "Sylhet", "Cox's Bazar", "Sajek Valley"].map((quickDest) => (
                     <button
                       key={quickDest}
                       type="button"
@@ -471,7 +471,7 @@ export default function AIBuilder() {
                     required
                   />
                   <div className="flex flex-wrap gap-1">
-                    {["Dhaka", "Chattagram", "Sylhet", "Cox's Bazar"].map((quickEnd) => (
+                    {["Dhaka", "Chattogram", "Sylhet", "Cox's Bazar"].map((quickEnd) => (
                       <button
                         key={quickEnd}
                         type="button"

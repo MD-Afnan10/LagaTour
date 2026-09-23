@@ -219,7 +219,10 @@ export function resolveLocationMetadata(rawInput) {
   if (!rawInput) return { name: "Dhaka", type: "city", coords: { lat: 23.8103, lng: 90.4125 } };
 
   let clean = String(rawInput).trim().toLowerCase();
-  clean = clean.replace(/ division$/i, "").replace(/ district$/i, "").trim();
+  clean = clean
+    .replace(/\s*\((division|district)\)$/i, "")
+    .replace(/\s+(division|district)$/i, "")
+    .trim();
 
   if (SPELLING_ALIASES[clean]) {
     clean = SPELLING_ALIASES[clean];
