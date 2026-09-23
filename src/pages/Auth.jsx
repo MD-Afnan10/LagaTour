@@ -81,28 +81,10 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const user = await login(email, password);
-      const isAdmin = Boolean(
-        user?.isAdmin || 
-        user?.role === "admin" || 
-        user?.role === "superadmin" || 
-        user?.user_id === "admin_root" ||
-        user?.id === "admin_root" ||
-        user?.email?.toLowerCase().startsWith("admin") ||
-        user?.username?.toLowerCase().startsWith("admin") ||
-        user?.username === "nabil_wanderer" ||
-        user?.email === "nutamim2001@gmail.com"
-      );
-
-      if (isAdmin) {
-        localStorage.setItem("ts_login_mode", "admin");
-        setSuccess("Administrator authenticated! Redirecting to Admin Panel...");
-        setTimeout(() => navigate("/admin"), 600);
-      } else {
-        localStorage.setItem("ts_login_mode", "user");
-        setSuccess("Success! Logging in...");
-        setTimeout(() => navigate("/"), 600);
-      }
+      await login(email, password);
+      localStorage.setItem("ts_login_mode", "user");
+      setSuccess("Success! Logging in...");
+      setTimeout(() => navigate("/"), 600);
     } catch (err) {
       setError(err.message || "Invalid email or password.");
     } finally {

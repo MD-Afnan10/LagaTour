@@ -100,7 +100,11 @@ export default function AdminNavbar() {
               </li>
               <li className="border-t border-slate-700 my-1"></li>
               <li>
-                <Link to="/" className="text-slate-300 hover:text-white font-medium flex items-center gap-2">
+                <Link 
+                  to="/" 
+                  onClick={() => localStorage.setItem("ts_login_mode", "user")}
+                  className="text-slate-300 hover:text-white font-medium flex items-center gap-2"
+                >
                   <ExternalLink className="w-4 h-4 text-slate-400" /> View Live Site
                 </Link>
               </li>
@@ -148,6 +152,7 @@ export default function AdminNavbar() {
             </Link>
             <Link 
               to="/" 
+              onClick={() => localStorage.setItem("ts_login_mode", "user")}
               className="btn btn-sm btn-ghost text-slate-300 hover:text-white rounded-xl font-medium flex items-center gap-1.5 ml-1"
               title="Open live public application"
             >
@@ -187,7 +192,15 @@ export default function AdminNavbar() {
                 <div className="text-[10px] text-slate-400 font-mono mt-1">{currentUser.email}</div>
               </li>
               <li><Link to="/admin" className="text-white hover:bg-slate-700"><ShieldAlert className="w-4 h-4 text-error" /> Admin Portal</Link></li>
-              <li><Link to="/" className="text-slate-300 hover:text-white hover:bg-slate-700"><ExternalLink className="w-4 h-4 text-slate-400" /> View Live Site</Link></li>
+              <li>
+                <Link 
+                  to="/" 
+                  onClick={() => localStorage.setItem("ts_login_mode", "user")}
+                  className="text-slate-300 hover:text-white hover:bg-slate-700"
+                >
+                  <ExternalLink className="w-4 h-4 text-slate-400" /> View Live Site
+                </Link>
+              </li>
               <li>
                 <button onClick={handleLogout} className="text-error font-bold hover:bg-error hover:text-white mt-1">
                   <LogOut className="w-4 h-4" /> Log out
