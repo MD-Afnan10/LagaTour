@@ -1379,6 +1379,20 @@ export const api = {
   async getActiveAnnouncements() {
     const res = await fetch(`${API_BASE_URL}/admin/announcements`);
     return await handleResponse(res);
+  },
+
+  // ===================== AI PLAN BUILDER =====================
+
+  /**
+   * Generate AI Tour Plans (Mode 1: Destination Max Spots, Mode 2: Nearby Sequenced Expedition)
+   */
+  async generateAITourPlans(specs) {
+    const res = await fetch(`${API_BASE_URL}/ai/generate-plans`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(specs)
+    });
+    return await handleResponse(res);
   }
 };
 
