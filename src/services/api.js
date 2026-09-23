@@ -146,6 +146,18 @@ export const api = {
   },
 
   /**
+   * Verify post media with AI visual moderation service
+   */
+  async verifyPostMedia(mediaItems, destination = "") {
+    const res = await fetch(`${API_BASE_URL}/posts/verify-media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ media: mediaItems, destination })
+    });
+    return await handleResponse(res);
+  },
+
+  /**
    * Like / Unlike a post
    */
   async likePost(postId, user) {
